@@ -20,12 +20,15 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
 app.use(cors({
-  origin: "*",
+  origin: function (origin, callback) {
+    // Allow all origins
+    callback(null, true);
+  },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
-
-app.options("*", cors());
 // app.use((req, res, next) => {
 //   res.header('Access-Control-Allow-Origin', '*');
 //   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,PATCH,DELETE,OPTIONS');
