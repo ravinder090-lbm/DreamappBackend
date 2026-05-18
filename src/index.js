@@ -68,11 +68,17 @@ app.use((error, req, res, next) => {
 connectDB()
   .then(seedSuperAdmin)
   .then(() => {
-    app.listen(port, () => {
-      console.log(`Server listening on http://localhost:${port}`);
-    });
+    if (process.env.NODE_ENV !== 'production') {
+      app.listen(port, () => {
+        console.log(`Server listening on http://localhost:${port}`);
+      });
+    }
   })
   .catch((error) => {
     console.error("Failed to start server:", error.message);
-    process.exit(1);
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
   });
+
+export default app;
