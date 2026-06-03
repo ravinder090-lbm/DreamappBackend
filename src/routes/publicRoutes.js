@@ -3,6 +3,7 @@ import { MenuItem } from "../models/MenuItem.js";
 import { Table } from "../models/Table.js";
 import { User } from "../models/User.js";
 import { Order } from "../models/Order.js";
+import { Banner } from "../models/Banner.js";
 
 const router = Router();
 
@@ -14,11 +15,15 @@ router.get("/menu/:tableId", async (req, res, next) => {
       return res.status(404).json({ message: "Table not found" });
     }
 
-    const menuItems = await MenuItem.find({ available: true, subAdmin: table.subAdmin })
-      .populate("category")
-      .sort({ createdAt: -1 });
+    const [menuItems, banners] = await Promise.all([
+      MenuItem.find({ available: true, subAdmin: table.subAdmin })
+        .populate("category")
+        .sort({ createdAt: -1 }),
+      Banner.find({ status: "active", subAdmin: table.subAdmin })
+        .sort({ createdAt: -1 }),
+    ]);
 
-    return res.json({ table, menuItems });
+    return res.json({ table, menuItems, banners });
   } catch (error) {
     return next(error);
   }
@@ -169,6 +174,19 @@ router.post("/place-order", async (req, res, next) => {
     }
 
     return res.json({ message: "Order placed successfully", user, order: newOrder });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/orders/:phone", async (req, res, next) => {
+  try {
+    const { phone } = req.params;
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    const orders = await Order.find({ customerPhone: phone }).sort({ createdAt: -1 });
+    return res.json(orders);
   } catch (error) {
     return next(error);
   }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { Category } from "../models/Category.js";
 import { MenuItem } from "../models/MenuItem.js";
+import { Banner } from "../models/Banner.js";
 
 const router = Router();
 
@@ -9,12 +10,13 @@ router.use(requireAuth(["subadmin"]));
 
 router.get("/", async (req, res, next) => {
   try {
-    const [categories, menuItems] = await Promise.all([
+    const [categories, menuItems, banners] = await Promise.all([
       Category.find({ subAdmin: req.user.id }).sort({ createdAt: -1 }),
       MenuItem.find({ subAdmin: req.user.id }).populate("category").sort({ createdAt: -1 }),
+      Banner.find({ subAdmin: req.user.id }).sort({ createdAt: -1 }),
     ]);
 
-    res.json({ categories, menuItems });
+    res.json({ categories, menuItems, banners });
   } catch (error) {
     next(error);
   }
@@ -134,6 +136,64 @@ router.delete("/menu-items/:id", async (req, res, next) => {
 
     if (!menuItem) {
       return res.status(404).json({ message: "Menu item not found" });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/banners", async (req, res, next) => {
+  try {
+    const banner = await Banner.create({ ...req.body, subAdmin: req.user.id });
+    res.status(201).json(banner);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/banners/:id", async (req, res, next) => {
+  try {
+    const banner = await Banner.findOne({ _id: req.params.id, subAdmin: req.user.id });
+
+    if (!banner) {
+      return res.status(404).json({ message: "Banner not found" });
+    }
+
+    return res.json(banner);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/banners/:id", async (req, res, next) => {
+  try {
+    const banner = await Banner.findOneAndUpdate(
+      { _id: req.params.id, subAdmin: req.user.id },
+      req.body,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!banner) {
+      return res.status(404).json({ message: "Banner not found" });
+    }
+
+    return res.json(banner);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/banners/:id", async (req, res, next) => {
+  try {
+    const banner = await Banner.findOneAndDelete({ _id: req.params.id, subAdmin: req.user.id });
+
+    if (!banner) {
+      return res.status(404).json({ message: "Banner not found" });
     }
 
     return res.status(204).send();
