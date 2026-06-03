@@ -18,6 +18,10 @@ const orderItemSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    image: {
+      type: String,
+      default: "",
+    },
   },
   { _id: false }
 );
@@ -43,6 +47,11 @@ const orderSchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "preparing", "completed", "cancelled"],
       default: "pending",
+    },
+    orderType: {
+      type: String,
+      enum: ["Dine In", "Take Away"],
+      default: "Dine In",
     },
     items: {
       type: [orderItemSchema],
