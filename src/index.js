@@ -14,11 +14,41 @@ import userRoutes from "./routes/userRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import path from "path";
+import { createServer } from "http";
+import { Server } from "socket.io";
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  }
+});
+
+io.on("connection", (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+  
+  socket.on("join", (roomId) => {
+    if (roomId) {
+      socket.join(roomId);
+      console.log(`Socket ${socket.id} joined room ${roomId}`);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+  });
+});
+
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 app.use(cors({
   origin: function (origin, callback) {
     // Allow all origins
@@ -69,7 +99,7 @@ connectDB()
   .then(seedSuperAdmin)
   .then(() => {
     if (process.env.NODE_ENV !== 'production') {
-      app.listen(port, () => {
+      httpServer.listen(port, () => {
         console.log(`Server listening on http://localhost:${port}`);
       });
     }

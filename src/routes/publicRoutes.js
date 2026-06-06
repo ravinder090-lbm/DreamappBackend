@@ -70,8 +70,9 @@ router.post("/verify-otp", async (req, res, next) => {
     otpStore.delete(phone);
 
     let subAdminId = null;
+    let table = null;
     if (tableId) {
-      const table = await Table.findById(tableId);
+      table = await Table.findById(tableId);
       if (table) {
         subAdminId = table.subAdmin;
       }
@@ -108,10 +109,16 @@ router.post("/verify-otp", async (req, res, next) => {
         customerPhone: user.phone,
         status: "pending",
         orderType,
+        table: orderType === "Dine In" ? table?._id : null,
+        tableName: orderType === "Dine In" ? table?.name || "" : "",
         items,
         total,
         subAdmin: subAdminId
       });
+      
+      if (req.io) {
+        req.io.to(subAdminId.toString()).emit("order_created", newOrder);
+      }
     }
 
     return res.json({ message: "OTP verified successfully", user, order: newOrder });
@@ -129,8 +136,9 @@ router.post("/place-order", async (req, res, next) => {
     }
 
     let subAdminId = null;
+    let table = null;
     if (tableId) {
-      const table = await Table.findById(tableId);
+      table = await Table.findById(tableId);
       if (table) {
         subAdminId = table.subAdmin;
       }
@@ -167,10 +175,16 @@ router.post("/place-order", async (req, res, next) => {
         customerPhone: user.phone,
         status: "pending",
         orderType,
+        table: orderType === "Dine In" ? table?._id : null,
+        tableName: orderType === "Dine In" ? table?.name || "" : "",
         items,
         total,
         subAdmin: subAdminId
       });
+
+      if (req.io) {
+        req.io.to(subAdminId.toString()).emit("order_created", newOrder);
+      }
     }
 
     return res.json({ message: "Order placed successfully", user, order: newOrder });
