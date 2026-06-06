@@ -25,6 +25,9 @@ router.get("/", async (req, res, next) => {
 router.post("/categories", async (req, res, next) => {
   try {
     const category = await Category.create({ ...req.body, subAdmin: req.user.id });
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     res.status(201).json(category);
   } catch (error) {
     next(error);
@@ -46,6 +49,9 @@ router.post("/categories/:id", async (req, res, next) => {
       return res.status(404).json({ message: "Category not found" });
     }
 
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     return res.json(category);
   } catch (error) {
     return next(error);
@@ -78,6 +84,9 @@ router.delete("/categories/:id", async (req, res, next) => {
 
     await MenuItem.deleteMany({ category: req.params.id, subAdmin: req.user.id });
 
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     return res.status(204).send();
   } catch (error) {
     return next(error);
@@ -88,6 +97,9 @@ router.post("/menu-items", async (req, res, next) => {
   try {
     const menuItem = await MenuItem.create({ ...req.body, subAdmin: req.user.id });
     const populatedMenuItem = await menuItem.populate("category");
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     res.status(201).json(populatedMenuItem);
   } catch (error) {
     next(error);
@@ -124,6 +136,9 @@ router.post("/menu-items/:id", async (req, res, next) => {
       return res.status(404).json({ message: "Menu item not found" });
     }
 
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     return res.json(menuItem);
   } catch (error) {
     return next(error);
@@ -138,6 +153,9 @@ router.delete("/menu-items/:id", async (req, res, next) => {
       return res.status(404).json({ message: "Menu item not found" });
     }
 
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     return res.status(204).send();
   } catch (error) {
     return next(error);
@@ -147,6 +165,9 @@ router.delete("/menu-items/:id", async (req, res, next) => {
 router.post("/banners", async (req, res, next) => {
   try {
     const banner = await Banner.create({ ...req.body, subAdmin: req.user.id });
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     res.status(201).json(banner);
   } catch (error) {
     next(error);
@@ -182,6 +203,9 @@ router.post("/banners/:id", async (req, res, next) => {
       return res.status(404).json({ message: "Banner not found" });
     }
 
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     return res.json(banner);
   } catch (error) {
     return next(error);
@@ -196,6 +220,9 @@ router.delete("/banners/:id", async (req, res, next) => {
       return res.status(404).json({ message: "Banner not found" });
     }
 
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("catalog_updated");
+    }
     return res.status(204).send();
   } catch (error) {
     return next(error);

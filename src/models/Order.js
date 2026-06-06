@@ -53,6 +53,16 @@ const orderSchema = new mongoose.Schema(
       enum: ["Dine In", "Take Away"],
       default: "Dine In",
     },
+    table: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Table",
+      default: null,
+    },
+    tableName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     items: {
       type: [orderItemSchema],
       default: [],

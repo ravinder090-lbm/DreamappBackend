@@ -8,7 +8,9 @@ router.use(requireAuth(["subadmin"]));
 
 router.get("/", async (req, res, next) => {
   try {
-    const orders = await Order.find({ subAdmin: req.user.id }).sort({ createdAt: -1 });
+    const orders = await Order.find({ subAdmin: req.user.id })
+      .populate("table", "name code")
+      .sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
     next(error);
@@ -17,7 +19,8 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const order = await Order.findOne({ _id: req.params.id, subAdmin: req.user.id });
+    const order = await Order.findOne({ _id: req.params.id, subAdmin: req.user.id })
+      .populate("table", "name code");
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
@@ -32,6 +35,10 @@ router.get("/:id", async (req, res, next) => {
 router.post("/", async (req, res, next) => {
   try {
     const order = await Order.create({ ...req.body, subAdmin: req.user.id });
+    await order.populate("table", "name code");
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("order_created", order);
+    }
     res.status(201).json(order);
   } catch (error) {
     next(error);
@@ -49,15 +56,34 @@ router.post("/:id", async (req, res, next) => {
         new: true,
         runValidators: false,
       }
-    );
+    ).populate("table", "name code");
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("order_updated", order);
+    }
+
     return res.json(order);
   } catch (error) {
     console.error(error);
+    return next(error);
+  }
+});
+
+router.delete("/:id", async (req, res, next) => {
+  try {
+    const order = await Order.findOneAndDelete({ _id: req.params.id, subAdmin: req.user.id });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    if (req.io) {
+      req.io.to(req.user.id.toString()).emit("order_deleted", { orderId: req.params.id });
+    }
+    return res.status(204).send();
+  } catch (error) {
     return next(error);
   }
 });
