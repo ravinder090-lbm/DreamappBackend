@@ -8,9 +8,18 @@ router.use(requireAuth(["subadmin"]));
 
 router.get("/", async (req, res, next) => {
   try {
-    const orders = await Order.find({ subAdmin: req.user.id })
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 0;
+
+    let query = Order.find({ subAdmin: req.user.id })
       .populate("table", "name code")
       .sort({ createdAt: -1 });
+
+    if (limit > 0) {
+      query = query.skip((page - 1) * limit).limit(limit);
+    }
+
+    const orders = await query;
     res.json(orders);
   } catch (error) {
     next(error);

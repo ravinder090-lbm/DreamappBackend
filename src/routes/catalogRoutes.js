@@ -10,6 +10,30 @@ router.use(requireAuth(["subadmin"]));
 
 router.get("/", async (req, res, next) => {
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 0;
+    const type = req.query.type; // 'categories', 'menu-items', or 'banners'
+
+    if (type) {
+      let query;
+      if (type === "categories") {
+        query = Category.find({ subAdmin: req.user.id }).sort({ createdAt: -1 });
+      } else if (type === "menu-items") {
+        query = MenuItem.find({ subAdmin: req.user.id }).populate("category").sort({ createdAt: -1 });
+      } else if (type === "banners") {
+        query = Banner.find({ subAdmin: req.user.id }).sort({ createdAt: -1 });
+      } else {
+        return res.status(400).json({ message: "Invalid type parameter" });
+      }
+
+      if (limit > 0) {
+        query = query.skip((page - 1) * limit).limit(limit);
+      }
+
+      const items = await query;
+      return res.json({ [type]: items });
+    }
+
     const [categories, menuItems, banners] = await Promise.all([
       Category.find({ subAdmin: req.user.id }).sort({ createdAt: -1 }),
       MenuItem.find({ subAdmin: req.user.id }).populate("category").sort({ createdAt: -1 }),

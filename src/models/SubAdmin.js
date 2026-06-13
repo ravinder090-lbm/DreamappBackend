@@ -40,6 +40,14 @@ const subAdminSchema = new mongoose.Schema(
       default: "subadmin",
       immutable: true,
     },
+    whatsAppConnected: {
+      type: Boolean,
+      default: false,
+    },
+    whatsAppNumber: {
+      type: String,
+      default: "",
+    },
   },
   {
     timestamps: true,
