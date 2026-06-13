@@ -8,7 +8,16 @@ router.use(requireAuth(["superadmin"]));
 
 router.get("/", async (req, res, next) => {
   try {
-    const subAdmins = await SubAdmin.find().sort({ createdAt: -1 });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 0;
+
+    let query = SubAdmin.find().sort({ createdAt: -1 });
+
+    if (limit > 0) {
+      query = query.skip((page - 1) * limit).limit(limit);
+    }
+
+    const subAdmins = await query;
     res.json(subAdmins);
   } catch (error) {
     next(error);

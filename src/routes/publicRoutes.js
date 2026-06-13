@@ -4,6 +4,8 @@ import { Table } from "../models/Table.js";
 import { User } from "../models/User.js";
 import { Order } from "../models/Order.js";
 import { Banner } from "../models/Banner.js";
+import { SubAdmin } from "../models/SubAdmin.js";
+import { whatsappManager } from "../lib/whatsappManager.js";
 
 const router = Router();
 
@@ -34,7 +36,7 @@ const otpStore = new Map();
 
 router.post("/send-otp", async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const { phone, tableId } = req.body;
     if (!phone) {
       return res.status(400).json({ message: "Phone number is required" });
     }
@@ -43,10 +45,31 @@ router.post("/send-otp", async (req, res, next) => {
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     otpStore.set(phone, otp);
 
-    // Mock sending OTP (e.g. log it for development)
-    console.log(`Mock OTP sent to ${phone}: ${otp}`);
+    let sentViaWhatsapp = false;
+    if (tableId) {
+      const table = await Table.findById(tableId);
+      if (table && table.subAdmin) {
+        const subAdmin = await SubAdmin.findById(table.subAdmin);
+        if (subAdmin && subAdmin.whatsAppConnected) {
+          try {
+            await whatsappManager.sendOTP(subAdmin._id.toString(), phone, otp);
+            sentViaWhatsapp = true;
+          } catch (err) {
+            console.error(`Failed to send WhatsApp OTP via subadmin ${subAdmin._id}:`, err);
+          }
+        }
+      }
+    }
 
-    return res.json({ message: "OTP sent successfully" });
+    if (!sentViaWhatsapp) {
+      // Mock sending OTP (e.g. log it for development)
+      console.log(`Mock OTP sent to ${phone}: ${otp}`);
+    }
+
+    return res.json({ 
+      message: "OTP sent successfully",
+      sentViaWhatsapp
+    });
   } catch (error) {
     return next(error);
   }

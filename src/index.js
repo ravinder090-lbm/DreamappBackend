@@ -13,6 +13,8 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
+import whatsappRoutes from "./routes/whatsappRoutes.js";
+import { whatsappManager } from "./lib/whatsappManager.js";
 import path from "path";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -28,6 +30,8 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
   }
 });
+
+whatsappManager.setIo(io);
 
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
@@ -86,6 +90,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/webhook", webhookRoutes);
+app.use("/api/whatsapp", whatsappRoutes);
 
 app.use((error, req, res, next) => {
   console.error("API Error caught by middleware:", error);
@@ -99,6 +104,9 @@ app.use((error, req, res, next) => {
 connectDB()
   .then(seedSuperAdmin)
   .then(() => {
+    whatsappManager.initializeAll().catch((err) => {
+      console.error("Error restoring WhatsApp sessions:", err);
+    });
     if (process.env.NODE_ENV !== 'production') {
       httpServer.listen(port, () => {
         console.log(`Server listening on http://localhost:${port}`);
@@ -113,3 +121,4 @@ connectDB()
   });
 
 export default app;
+// restart trigger 2
