@@ -7,11 +7,23 @@ import { fileURLToPath } from "url";
 import { SubAdmin } from "../models/SubAdmin.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SESSIONS_DIR = path.join(__dirname, "../../../sessions");
+const SESSIONS_DIR = process.env.VERCEL
+  ? path.join("/tmp", "sessions")
+  : path.join(__dirname, "../../../sessions");
 
 // Ensure sessions directory exists
-if (!fs.existsSync(SESSIONS_DIR)) {
-  fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+if (process.env.VERCEL) {
+  try {
+    if (!fs.existsSync(SESSIONS_DIR)) {
+      fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.warn("Could not create sessions directory in /tmp:", err.message);
+  }
+} else {
+  if (!fs.existsSync(SESSIONS_DIR)) {
+    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+  }
 }
 
 class WhatsAppManager {
@@ -27,6 +39,10 @@ class WhatsAppManager {
 
   // Restore previously connected sessions on startup
   async initializeAll() {
+    if (process.env.VERCEL) {
+      console.warn("Skipping WhatsApp session initialization in serverless environment (Vercel).");
+      return;
+    }
     try {
       const activeSubAdmins = await SubAdmin.find({ whatsAppConnected: true });
       console.log(`Restoring ${activeSubAdmins.length} WhatsApp session(s)...`);
@@ -41,6 +57,9 @@ class WhatsAppManager {
   }
 
   async connectSession(subAdminId) {
+    if (process.env.VERCEL) {
+      throw new Error("WhatsApp connection is not supported on serverless hosting (Vercel). Please run the server on a persistent hosting platform (e.g., Heroku, Render, VPS).");
+    }
     if (this.sockets.has(subAdminId)) {
       console.log(`Session already active for subadmin ${subAdminId}`);
       return this.sockets.get(subAdminId);
