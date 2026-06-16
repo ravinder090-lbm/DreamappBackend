@@ -50,8 +50,13 @@ const orderSchema = new mongoose.Schema(
     },
     orderType: {
       type: String,
-      enum: ["Dine In", "Take Away"],
+      enum: ["Dine In", "Take Away", "Home Delivery"],
       default: "Dine In",
+    },
+    deliveryAddress: {
+      type: String,
+      trim: true,
+      default: "",
     },
     table: {
       type: mongoose.Schema.Types.ObjectId,
