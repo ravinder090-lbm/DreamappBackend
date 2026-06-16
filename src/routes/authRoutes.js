@@ -84,4 +84,39 @@ router.put("/profile", requireAuth(["subadmin"]), async (req, res, next) => {
   }
 });
 
+router.put("/change-password", requireAuth(["subadmin"]), async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters long" });
+    }
+
+    const subAdmin = await SubAdmin.findById(req.user.id).select("+password");
+    if (!subAdmin) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isMatch = await subAdmin.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Incorrect current password" });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ message: "New password cannot be the same as your current password" });
+    }
+
+    subAdmin.password = newPassword;
+    await subAdmin.save();
+
+    res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

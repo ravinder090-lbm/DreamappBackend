@@ -77,7 +77,7 @@ router.post("/send-otp", async (req, res, next) => {
 
 router.post("/verify-otp", async (req, res, next) => {
   try {
-    const { phone, otp, tableId, cart, orderType = "Dine In" } = req.body;
+    const { phone, otp, tableId, cart, orderType = "Dine In", address } = req.body;
 
     if (!phone || !otp) {
       return res.status(400).json({ message: "Phone and OTP are required" });
@@ -113,7 +113,11 @@ router.post("/verify-otp", async (req, res, next) => {
         phone,
         email: `${phone}@guest.local`,
         subAdmin: subAdminId,
+        address: orderType === "Home Delivery" && address ? address : ""
       });
+    } else if (orderType === "Home Delivery" && address) {
+      user.address = address;
+      await user.save();
     }
 
     let newOrder = null;
@@ -134,6 +138,7 @@ router.post("/verify-otp", async (req, res, next) => {
         orderType,
         table: orderType === "Dine In" ? table?._id : null,
         tableName: orderType === "Dine In" ? table?.name || "" : "",
+        deliveryAddress: orderType === "Home Delivery" ? address || user.address || "" : "",
         items,
         total,
         subAdmin: subAdminId
@@ -152,7 +157,7 @@ router.post("/verify-otp", async (req, res, next) => {
 
 router.post("/place-order", async (req, res, next) => {
   try {
-    const { phone, tableId, cart, orderType = "Dine In" } = req.body;
+    const { phone, tableId, cart, orderType = "Dine In", address } = req.body;
 
     if (!phone) {
       return res.status(400).json({ message: "Phone is required" });
@@ -179,7 +184,11 @@ router.post("/place-order", async (req, res, next) => {
         phone,
         email: `${phone}@guest.local`,
         subAdmin: subAdminId,
+        address: orderType === "Home Delivery" && address ? address : ""
       });
+    } else if (orderType === "Home Delivery" && address) {
+      user.address = address;
+      await user.save();
     }
 
     let newOrder = null;
@@ -200,6 +209,7 @@ router.post("/place-order", async (req, res, next) => {
         orderType,
         table: orderType === "Dine In" ? table?._id : null,
         tableName: orderType === "Dine In" ? table?.name || "" : "",
+        deliveryAddress: orderType === "Home Delivery" ? address || user.address || "" : "",
         items,
         total,
         subAdmin: subAdminId
