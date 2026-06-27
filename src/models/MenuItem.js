@@ -42,4 +42,7 @@ const menuItemSchema = new mongoose.Schema(
   }
 );
 
+menuItemSchema.index({ subAdmin: 1, createdAt: -1 });
+menuItemSchema.index({ subAdmin: 1, available: 1, createdAt: -1 });
+
 export const MenuItem = mongoose.model("MenuItem", menuItemSchema);

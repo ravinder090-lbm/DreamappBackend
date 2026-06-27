@@ -72,11 +72,42 @@ const orderSchema = new mongoose.Schema(
       type: [orderItemSchema],
       default: [],
     },
+    subtotal: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    sgstAmount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    cgstAmount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    deliveryCharges: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     total: {
       type: Number,
       required: true,
       min: 0,
       default: 0,
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["COD", "Online"],
+      default: "COD",
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid"],
+      default: "pending",
     },
     subAdmin: {
       type: mongoose.Schema.Types.ObjectId,
@@ -88,5 +119,8 @@ const orderSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+orderSchema.index({ subAdmin: 1, createdAt: -1 });
+orderSchema.index({ customerPhone: 1, createdAt: -1 });
 
 export const Order = mongoose.model("Order", orderSchema);

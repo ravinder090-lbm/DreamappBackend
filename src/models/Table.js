@@ -33,4 +33,6 @@ const tableSchema = new mongoose.Schema(
   }
 );
 
+tableSchema.index({ subAdmin: 1, createdAt: -1 });
+
 export const Table = mongoose.model("Table", tableSchema);

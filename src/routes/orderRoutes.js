@@ -43,7 +43,11 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const order = await Order.create({ ...req.body, subAdmin: req.user.id });
+    const orderData = { ...req.body, subAdmin: req.user.id };
+    if (!orderData.orderNumber) {
+      orderData.orderNumber = `ORD-${Date.now().toString().slice(-6)}`;
+    }
+    const order = await Order.create(orderData);
     await order.populate("table", "name code");
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("order_created", order);

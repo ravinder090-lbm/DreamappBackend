@@ -48,6 +48,57 @@ const subAdminSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    address: {
+      type: String,
+      default: "",
+    },
+    deliveryRadius: {
+      type: Number,
+      default: 0,
+    },
+    lat: {
+      type: Number,
+      default: 0,
+    },
+    lng: {
+      type: Number,
+      default: 0,
+    },
+    themeColor: {
+      type: String,
+      default: "#1d6f56",
+    },
+    enableDineIn: {
+      type: Boolean,
+      default: true,
+    },
+    enableTakeAway: {
+      type: Boolean,
+      default: true,
+    },
+    enableDelivery: {
+      type: Boolean,
+      default: true,
+    },
+    enableCOD: {
+      type: Boolean,
+      default: true,
+    },
+    sgstPercent: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    cgstPercent: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    deliveryCharges: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: true,

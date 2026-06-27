@@ -28,4 +28,6 @@ const categorySchema = new mongoose.Schema(
   }
 );
 
+categorySchema.index({ subAdmin: 1, createdAt: -1 });
+
 export const Category = mongoose.model("Category", categorySchema);

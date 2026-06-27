@@ -39,4 +39,7 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+userSchema.index({ subAdmin: 1, phone: 1 });
+userSchema.index({ subAdmin: 1, createdAt: -1 });
+
 export const User = mongoose.model("User", userSchema);

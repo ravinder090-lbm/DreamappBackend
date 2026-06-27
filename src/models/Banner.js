@@ -33,4 +33,7 @@ const bannerSchema = new mongoose.Schema(
   }
 );
 
+bannerSchema.index({ subAdmin: 1, createdAt: -1 });
+bannerSchema.index({ subAdmin: 1, status: 1, createdAt: -1 });
+
 export const Banner = mongoose.model("Banner", bannerSchema);
