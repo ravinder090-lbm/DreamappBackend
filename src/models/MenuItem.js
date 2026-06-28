@@ -1,48 +1,76 @@
-import mongoose from "mongoose";
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../lib/db.js";
+import { Category } from "./Category.js";
+import { SubAdmin } from "./SubAdmin.js";
 
-const menuItemSchema = new mongoose.Schema(
+export class MenuItem extends Model {}
+
+MenuItem.init(
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      }
+    },
     name: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     price: {
-      type: Number,
-      required: true,
-      min: 0,
+      type: DataTypes.FLOAT,
+      allowNull: false,
     },
-    category: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Category",
-      required: true,
+    categoryId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: Category,
+        key: "id"
+      }
     },
     description: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING,
+      defaultValue: "",
     },
     image: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.TEXT,
+      defaultValue: "",
     },
     available: {
-      type: Boolean,
-      default: true,
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
     },
-    subAdmin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SubAdmin",
-      required: true,
-    },
+    subAdminId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: SubAdmin,
+        key: "id"
+      }
+    }
   },
   {
-    timestamps: true,
+    sequelize,
+    modelName: "MenuItem",
+    indexes: [
+      {
+        fields: ["subAdminId", "createdAt"]
+      },
+      {
+        fields: ["subAdminId", "available", "createdAt"]
+      }
+    ]
   }
 );
 
-menuItemSchema.index({ subAdmin: 1, createdAt: -1 });
-menuItemSchema.index({ subAdmin: 1, available: 1, createdAt: -1 });
+MenuItem.belongsTo(Category, { foreignKey: "categoryId", as: "category" });
+Category.hasMany(MenuItem, { foreignKey: "categoryId", as: "menuItems" });
 
-export const MenuItem = mongoose.model("MenuItem", menuItemSchema);
+MenuItem.belongsTo(SubAdmin, { foreignKey: "subAdminId", as: "subAdmin" });
+SubAdmin.hasMany(MenuItem, { foreignKey: "subAdminId", as: "menuItems" });

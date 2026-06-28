@@ -1,20 +1,32 @@
-import mongoose from "mongoose";
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../lib/db.js";
 
-const taskSchema = new mongoose.Schema(
+export class Task extends Model {}
+
+Task.init(
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      }
+    },
     title: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     completed: {
-      type: Boolean,
-      default: false,
-    },
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    }
   },
   {
-    timestamps: true,
+    sequelize,
+    modelName: "Task"
   }
 );
-
-export const Task = mongoose.model("Task", taskSchema);

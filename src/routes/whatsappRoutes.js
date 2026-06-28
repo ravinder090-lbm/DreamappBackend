@@ -9,7 +9,7 @@ router.use(requireAuth(["subadmin"]));
 
 router.get("/status", async (req, res, next) => {
   try {
-    const subAdmin = await SubAdmin.findById(req.user.id);
+    const subAdmin = await SubAdmin.findByPk(req.user.id);
     if (!subAdmin) {
       return res.status(404).json({ message: "Subadmin not found" });
     }

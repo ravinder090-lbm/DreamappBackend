@@ -1,38 +1,57 @@
-import mongoose from "mongoose";
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../lib/db.js";
+import { SubAdmin } from "./SubAdmin.js";
 
-const tableSchema = new mongoose.Schema(
+export class Table extends Model {}
+
+Table.init(
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      }
+    },
     name: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     code: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     capacity: {
-      type: Number,
-      min: 1,
-      default: 2,
+      type: DataTypes.INTEGER,
+      defaultValue: 2,
     },
     status: {
-      type: String,
-      enum: ["available", "occupied", "inactive"],
-      default: "available",
+      type: DataTypes.STRING,
+      defaultValue: "available",
     },
-    subAdmin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SubAdmin",
-      required: true,
-    },
+    subAdminId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: SubAdmin,
+        key: "id"
+      }
+    }
   },
   {
-    timestamps: true,
+    sequelize,
+    modelName: "Table",
+    indexes: [
+      {
+        fields: ["subAdminId", "createdAt"]
+      }
+    ]
   }
 );
 
-tableSchema.index({ subAdmin: 1, createdAt: -1 });
-
-export const Table = mongoose.model("Table", tableSchema);
+Table.belongsTo(SubAdmin, { foreignKey: "subAdminId", as: "subAdmin" });
+SubAdmin.hasMany(Table, { foreignKey: "subAdminId", as: "tables" });

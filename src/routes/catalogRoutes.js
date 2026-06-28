@@ -15,29 +15,35 @@ router.get("/", async (req, res, next) => {
     const type = req.query.type; // 'categories', 'menu-items', or 'banners'
 
     if (type) {
-      let query;
+      let items;
+      const options = {
+        where: { subAdminId: req.user.id },
+        order: [["createdAt", "DESC"]]
+      };
+
+      if (limit > 0) {
+        options.limit = limit;
+        options.offset = (page - 1) * limit;
+      }
+
       if (type === "categories") {
-        query = Category.find({ subAdmin: req.user.id }).sort({ createdAt: -1 });
+        items = await Category.findAll(options);
       } else if (type === "menu-items") {
-        query = MenuItem.find({ subAdmin: req.user.id }).populate("category").sort({ createdAt: -1 });
+        options.include = [{ model: Category, as: "category" }];
+        items = await MenuItem.findAll(options);
       } else if (type === "banners") {
-        query = Banner.find({ subAdmin: req.user.id }).sort({ createdAt: -1 });
+        items = await Banner.findAll(options);
       } else {
         return res.status(400).json({ message: "Invalid type parameter" });
       }
 
-      if (limit > 0) {
-        query = query.skip((page - 1) * limit).limit(limit);
-      }
-
-      const items = await query;
       return res.json({ [type]: items });
     }
 
     const [categories, menuItems, banners] = await Promise.all([
-      Category.find({ subAdmin: req.user.id }).sort({ createdAt: -1 }),
-      MenuItem.find({ subAdmin: req.user.id }).populate("category").sort({ createdAt: -1 }),
-      Banner.find({ subAdmin: req.user.id }).sort({ createdAt: -1 }),
+      Category.findAll({ where: { subAdminId: req.user.id }, order: [["createdAt", "DESC"]] }),
+      MenuItem.findAll({ where: { subAdminId: req.user.id }, include: [{ model: Category, as: "category" }], order: [["createdAt", "DESC"]] }),
+      Banner.findAll({ where: { subAdminId: req.user.id }, order: [["createdAt", "DESC"]] }),
     ]);
 
     res.json({ categories, menuItems, banners });
@@ -48,7 +54,7 @@ router.get("/", async (req, res, next) => {
 
 router.post("/categories", async (req, res, next) => {
   try {
-    const category = await Category.create({ ...req.body, subAdmin: req.user.id });
+    const category = await Category.create({ ...req.body, subAdminId: req.user.id });
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -60,18 +66,15 @@ router.post("/categories", async (req, res, next) => {
 
 router.post("/categories/:id", async (req, res, next) => {
   try {
-    const category = await Category.findOneAndUpdate(
-      { _id: req.params.id, subAdmin: req.user.id },
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    const [updatedCount] = await Category.update(req.body, {
+      where: { id: req.params.id, subAdminId: req.user.id }
+    });
 
-    if (!category) {
+    if (updatedCount === 0) {
       return res.status(404).json({ message: "Category not found" });
     }
+
+    const category = await Category.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
@@ -84,13 +87,16 @@ router.post("/categories/:id", async (req, res, next) => {
 
 router.get("/categories/:id", async (req, res, next) => {
   try {
-    const category = await Category.findOne({ _id: req.params.id, subAdmin: req.user.id });
+    const category = await Category.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (!category) {
       return res.status(404).json({ message: "Category not found" });
     }
 
-    const menuItems = await MenuItem.find({ category: req.params.id, subAdmin: req.user.id }).sort({ createdAt: -1 });
+    const menuItems = await MenuItem.findAll({
+      where: { categoryId: req.params.id, subAdminId: req.user.id },
+      order: [["createdAt", "DESC"]]
+    });
 
     return res.json({ category, menuItems });
   } catch (error) {
@@ -100,13 +106,14 @@ router.get("/categories/:id", async (req, res, next) => {
 
 router.delete("/categories/:id", async (req, res, next) => {
   try {
-    const category = await Category.findOneAndDelete({ _id: req.params.id, subAdmin: req.user.id });
+    const category = await Category.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (!category) {
       return res.status(404).json({ message: "Category not found" });
     }
 
-    await MenuItem.deleteMany({ category: req.params.id, subAdmin: req.user.id });
+    await Category.destroy({ where: { id: req.params.id, subAdminId: req.user.id } });
+    await MenuItem.destroy({ where: { categoryId: req.params.id, subAdminId: req.user.id } });
 
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
@@ -119,8 +126,14 @@ router.delete("/categories/:id", async (req, res, next) => {
 
 router.post("/menu-items", async (req, res, next) => {
   try {
-    const menuItem = await MenuItem.create({ ...req.body, subAdmin: req.user.id });
-    const populatedMenuItem = await menuItem.populate("category");
+    if (req.body.category) {
+      req.body.categoryId = req.body.category;
+    }
+    const menuItem = await MenuItem.create({ ...req.body, subAdminId: req.user.id });
+    const populatedMenuItem = await MenuItem.findOne({
+      where: { id: menuItem.id },
+      include: [{ model: Category, as: "category" }]
+    });
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -132,8 +145,10 @@ router.post("/menu-items", async (req, res, next) => {
 
 router.get("/menu-items/:id", async (req, res, next) => {
   try {
-    const menuItem = await MenuItem.findOne({ _id: req.params.id, subAdmin: req.user.id })
-      .populate("category");
+    const menuItem = await MenuItem.findOne({
+      where: { id: req.params.id, subAdminId: req.user.id },
+      include: [{ model: Category, as: "category" }]
+    });
 
     if (!menuItem) {
       return res.status(404).json({ message: "Menu item not found" });
@@ -147,18 +162,21 @@ router.get("/menu-items/:id", async (req, res, next) => {
 
 router.post("/menu-items/:id", async (req, res, next) => {
   try {
-    const menuItem = await MenuItem.findOneAndUpdate(
-      { _id: req.params.id, subAdmin: req.user.id },
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    ).populate("category");
+    if (req.body.category) {
+      req.body.categoryId = req.body.category;
+    }
+    const [updatedCount] = await MenuItem.update(req.body, {
+      where: { id: req.params.id, subAdminId: req.user.id }
+    });
 
-    if (!menuItem) {
+    if (updatedCount === 0) {
       return res.status(404).json({ message: "Menu item not found" });
     }
+
+    const menuItem = await MenuItem.findOne({
+      where: { id: req.params.id, subAdminId: req.user.id },
+      include: [{ model: Category, as: "category" }]
+    });
 
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
@@ -171,11 +189,13 @@ router.post("/menu-items/:id", async (req, res, next) => {
 
 router.delete("/menu-items/:id", async (req, res, next) => {
   try {
-    const menuItem = await MenuItem.findOneAndDelete({ _id: req.params.id, subAdmin: req.user.id });
+    const menuItem = await MenuItem.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (!menuItem) {
       return res.status(404).json({ message: "Menu item not found" });
     }
+
+    await MenuItem.destroy({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
@@ -188,7 +208,7 @@ router.delete("/menu-items/:id", async (req, res, next) => {
 
 router.post("/banners", async (req, res, next) => {
   try {
-    const banner = await Banner.create({ ...req.body, subAdmin: req.user.id });
+    const banner = await Banner.create({ ...req.body, subAdminId: req.user.id });
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -200,7 +220,7 @@ router.post("/banners", async (req, res, next) => {
 
 router.get("/banners/:id", async (req, res, next) => {
   try {
-    const banner = await Banner.findOne({ _id: req.params.id, subAdmin: req.user.id });
+    const banner = await Banner.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (!banner) {
       return res.status(404).json({ message: "Banner not found" });
@@ -214,18 +234,15 @@ router.get("/banners/:id", async (req, res, next) => {
 
 router.post("/banners/:id", async (req, res, next) => {
   try {
-    const banner = await Banner.findOneAndUpdate(
-      { _id: req.params.id, subAdmin: req.user.id },
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    const [updatedCount] = await Banner.update(req.body, {
+      where: { id: req.params.id, subAdminId: req.user.id }
+    });
 
-    if (!banner) {
+    if (updatedCount === 0) {
       return res.status(404).json({ message: "Banner not found" });
     }
+
+    const banner = await Banner.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
@@ -238,11 +255,13 @@ router.post("/banners/:id", async (req, res, next) => {
 
 router.delete("/banners/:id", async (req, res, next) => {
   try {
-    const banner = await Banner.findOneAndDelete({ _id: req.params.id, subAdmin: req.user.id });
+    const banner = await Banner.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (!banner) {
       return res.status(404).json({ message: "Banner not found" });
     }
+
+    await Banner.destroy({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");

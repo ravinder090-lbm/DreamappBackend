@@ -1,39 +1,60 @@
-import mongoose from "mongoose";
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../lib/db.js";
+import { SubAdmin } from "./SubAdmin.js";
 
-const bannerSchema = new mongoose.Schema(
+export class Banner extends Model {}
+
+Banner.init(
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      }
+    },
     title: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     description: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING,
+      defaultValue: "",
     },
     image: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.TEXT,
+      allowNull: false,
     },
     status: {
-      type: String,
-      enum: ["active", "inactive"],
-      default: "active",
+      type: DataTypes.STRING,
+      defaultValue: "active",
     },
-    subAdmin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SubAdmin",
-      required: true,
-    },
+    subAdminId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: SubAdmin,
+        key: "id"
+      }
+    }
   },
   {
-    timestamps: true,
+    sequelize,
+    modelName: "Banner",
+    indexes: [
+      {
+        fields: ["subAdminId", "createdAt"]
+      },
+      {
+        fields: ["subAdminId", "status", "createdAt"]
+      }
+    ]
   }
 );
 
-bannerSchema.index({ subAdmin: 1, createdAt: -1 });
-bannerSchema.index({ subAdmin: 1, status: 1, createdAt: -1 });
-
-export const Banner = mongoose.model("Banner", bannerSchema);
+Banner.belongsTo(SubAdmin, { foreignKey: "subAdminId", as: "subAdmin" });
+SubAdmin.hasMany(Banner, { foreignKey: "subAdminId", as: "banners" });

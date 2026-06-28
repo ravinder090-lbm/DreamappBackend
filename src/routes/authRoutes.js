@@ -11,7 +11,7 @@ const router = Router();
 function createToken(user, role) {
   return jwt.sign(
     {
-      id: user._id,
+      id: user.id || user._id,
       name: user.name,
       email: user.email,
       role,
@@ -30,7 +30,7 @@ router.post("/login", async (req, res, next) => {
     }
 
     const Model = role === "superadmin" ? SuperAdmin : SubAdmin;
-    const user = await Model.findOne({ email }).select("+password");
+    const user = await Model.findOne({ where: { email } });
 
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid email or password" });
@@ -64,11 +64,8 @@ router.get("/me", requireAuth(["superadmin", "subadmin"]), (req, res) => {
 router.put("/profile", requireAuth(["subadmin"]), async (req, res, next) => {
   try {
     const { name, logo } = req.body;
-    const subAdmin = await SubAdmin.findByIdAndUpdate(
-      req.user.id,
-      { name, logo },
-      { new: true, runValidators: true }
-    );
+    await SubAdmin.update({ name, logo }, { where: { id: req.user.id } });
+    const subAdmin = await SubAdmin.findByPk(req.user.id);
     
     if (!subAdmin) {
       return res.status(404).json({ message: "User not found" });
@@ -98,7 +95,7 @@ router.put("/change-password", requireAuth(["subadmin"]), async (req, res, next)
       return res.status(400).json({ message: "New password must be at least 6 characters long" });
     }
 
-    const subAdmin = await SubAdmin.findById(req.user.id).select("+password");
+    const subAdmin = await SubAdmin.findByPk(req.user.id);
     if (!subAdmin) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -123,7 +120,7 @@ router.put("/change-password", requireAuth(["subadmin"]), async (req, res, next)
 
 router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
   try {
-    const subAdmin = await SubAdmin.findById(req.user.id);
+    const subAdmin = await SubAdmin.findByPk(req.user.id);
     if (!subAdmin) {
       return res.status(404).json({ message: "Subadmin not found" });
     }
@@ -174,11 +171,8 @@ router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
       }
     }
 
-    const subAdmin = await SubAdmin.findByIdAndUpdate(
-      req.user.id,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    );
+    await SubAdmin.update(updateData, { where: { id: req.user.id } });
+    const subAdmin = await SubAdmin.findByPk(req.user.id);
     if (!subAdmin) {
       return res.status(404).json({ message: "Subadmin not found" });
     }
