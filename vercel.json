@@ -8,7 +8,14 @@
   ],
   "functions": {
     "api/index.js": {
-      "includeFiles": "node_modules/lru-cache/**"
+      "includeFiles": [
+        "node_modules/lru-cache/**",
+        "node_modules/socket.io/**",
+        "node_modules/engine.io/**",
+        "node_modules/socket.io-parser/**",
+        "node_modules/engine.io-parser/**",
+        "node_modules/socket.io-adapter/**"
+      ]
     }
   }
 }
