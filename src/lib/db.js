@@ -3,15 +3,18 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const databaseUrl = process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/dreamapp";
+import pg from "pg";
+
+console.log("PG Loaded:", !!pg);
+
+const databaseUrl = process.env.DATABASE_URL;
 
 export const sequelize = new Sequelize(databaseUrl, {
   dialect: "postgres",
+  dialectModule: pg,
   logging: false,
-  define: {
-    timestamps: true
-  }
 });
+
 
 export async function connectDB() {
   try {
