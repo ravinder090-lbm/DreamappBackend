@@ -1,92 +1,118 @@
-import mongoose from "mongoose";
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../lib/db.js";
+import { Table } from "./Table.js";
+import { SubAdmin } from "./SubAdmin.js";
 
-const orderItemSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 1,
-      default: 1,
-    },
-    price: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    image: {
-      type: String,
-      default: "",
-    },
-  },
-  { _id: false }
-);
+export class Order extends Model {}
 
-const orderSchema = new mongoose.Schema(
+Order.init(
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      }
+    },
     orderNumber: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     customerName: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     customerPhone: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING,
+      defaultValue: "",
     },
     status: {
-      type: String,
-      enum: ["pending", "preparing", "completed", "cancelled"],
-      default: "pending",
+      type: DataTypes.STRING,
+      defaultValue: "pending",
     },
     orderType: {
-      type: String,
-      enum: ["Dine In", "Take Away", "Home Delivery"],
-      default: "Dine In",
+      type: DataTypes.STRING,
+      defaultValue: "Dine In",
     },
     deliveryAddress: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING,
+      defaultValue: "",
     },
-    table: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Table",
-      default: null,
+    tableId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: Table,
+        key: "id"
+      }
     },
     tableName: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING,
+      defaultValue: "",
     },
     items: {
-      type: [orderItemSchema],
-      default: [],
+      type: DataTypes.JSONB,
+      defaultValue: [],
+    },
+    subtotal: {
+      type: DataTypes.FLOAT,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    sgstAmount: {
+      type: DataTypes.FLOAT,
+      defaultValue: 0,
+    },
+    cgstAmount: {
+      type: DataTypes.FLOAT,
+      defaultValue: 0,
+    },
+    deliveryCharges: {
+      type: DataTypes.FLOAT,
+      defaultValue: 0,
     },
     total: {
-      type: Number,
-      required: true,
-      min: 0,
-      default: 0,
+      type: DataTypes.FLOAT,
+      allowNull: false,
+      defaultValue: 0,
     },
-    subAdmin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SubAdmin",
-      required: true,
+    paymentMethod: {
+      type: DataTypes.STRING,
+      defaultValue: "COD",
     },
+    paymentStatus: {
+      type: DataTypes.STRING,
+      defaultValue: "pending",
+    },
+    subAdminId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: SubAdmin,
+        key: "id"
+      }
+    }
   },
   {
-    timestamps: true,
+    sequelize,
+    modelName: "Order",
+    indexes: [
+      {
+        fields: ["subAdminId", "createdAt"]
+      },
+      {
+        fields: ["customerPhone", "createdAt"]
+      }
+    ]
   }
 );
 
-export const Order = mongoose.model("Order", orderSchema);
+Order.belongsTo(Table, { foreignKey: "tableId", as: "table" });
+Table.hasMany(Order, { foreignKey: "tableId", as: "orders" });
+
+Order.belongsTo(SubAdmin, { foreignKey: "subAdminId", as: "subAdmin" });
+SubAdmin.hasMany(Order, { foreignKey: "subAdminId", as: "orders" });

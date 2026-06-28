@@ -1,31 +1,53 @@
-import mongoose from "mongoose";
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../lib/db.js";
+import { SubAdmin } from "./SubAdmin.js";
 
-const categorySchema = new mongoose.Schema(
+export class Category extends Model {}
+
+Category.init(
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      }
+    },
     name: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     description: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING,
+      defaultValue: "",
     },
     image: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.TEXT,
+      defaultValue: "",
     },
-    subAdmin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SubAdmin",
-      required: true,
-    },
+    subAdminId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: SubAdmin,
+        key: "id"
+      }
+    }
   },
   {
-    timestamps: true,
+    sequelize,
+    modelName: "Category",
+    indexes: [
+      {
+        fields: ["subAdminId", "createdAt"]
+      }
+    ]
   }
 );
 
-export const Category = mongoose.model("Category", categorySchema);
+Category.belongsTo(SubAdmin, { foreignKey: "subAdminId", as: "subAdmin" });
+SubAdmin.hasMany(Category, { foreignKey: "subAdminId", as: "categories" });

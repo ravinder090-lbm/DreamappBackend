@@ -1,5 +1,5 @@
 import { Router } from "express";
-import mongoose from "mongoose";
+import { Op } from "sequelize";
 import { requireAuth } from "../middleware/auth.js";
 import { Order } from "../models/Order.js";
 import { User } from "../models/User.js";
@@ -13,63 +13,50 @@ router.use(requireAuth(["subadmin"]));
 
 router.get("/", async (req, res, next) => {
   try {
-    // Calculate 7 days ago (start of day)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
-    const subAdminId = new mongoose.Types.ObjectId(req.user.id);
-
     const [
-      orders,
-      users,
-      tables,
-      categories,
-      menuItems,
-      orderTrendRaw,
-      statusDistributionRaw
+      ordersCount,
+      usersCount,
+      tablesCount,
+      categoriesCount,
+      menuItemsCount,
+      ordersInLast7Days,
+      allOrdersStatus
     ] = await Promise.all([
-      Order.countDocuments({ subAdmin: req.user.id }),
-      User.countDocuments({ subAdmin: req.user.id }),
-      Table.countDocuments({ subAdmin: req.user.id }),
-      Category.countDocuments({ subAdmin: req.user.id }),
-      MenuItem.countDocuments({ subAdmin: req.user.id }),
+      Order.count({ where: { subAdminId: req.user.id } }),
+      User.count({ where: { subAdminId: req.user.id } }),
+      Table.count({ where: { subAdminId: req.user.id } }),
+      Category.count({ where: { subAdminId: req.user.id } }),
+      MenuItem.count({ where: { subAdminId: req.user.id } }),
 
-      // Aggregate order trends (counts & revenue) for last 7 days
-      Order.aggregate([
-        {
-          $match: {
-            subAdmin: subAdminId,
-            createdAt: { $gte: sevenDaysAgo }
-          }
+      Order.findAll({
+        where: {
+          subAdminId: req.user.id,
+          createdAt: { [Op.gte]: sevenDaysAgo }
         },
-        {
-          $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-            count: { $sum: 1 },
-            revenue: { $sum: "$total" }
-          }
-        },
-        { $sort: { _id: 1 } }
-      ]),
+        attributes: ["total", "createdAt"]
+      }),
 
-      // Aggregate status distribution
-      Order.aggregate([
-        {
-          $match: {
-            subAdmin: subAdminId
-          }
-        },
-        {
-          $group: {
-            _id: "$status",
-            count: { $sum: 1 }
-          }
-        }
-      ])
+      Order.findAll({
+        where: { subAdminId: req.user.id },
+        attributes: ["status"]
+      })
     ]);
 
-    // Pre-populate last 7 days (including today) in correct order
+    // Aggregate trends in JS
+    const orderTrendRawMap = {};
+    ordersInLast7Days.forEach((ord) => {
+      const dateStr = new Date(ord.createdAt).toISOString().split("T")[0];
+      if (!orderTrendRawMap[dateStr]) {
+        orderTrendRawMap[dateStr] = { count: 0, revenue: 0 };
+      }
+      orderTrendRawMap[dateStr].count += 1;
+      orderTrendRawMap[dateStr].revenue += ord.total;
+    });
+
     const orderTrend = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
@@ -77,7 +64,7 @@ router.get("/", async (req, res, next) => {
       const dateStr = d.toISOString().split("T")[0];
       const dayLabel = d.toLocaleDateString("en-US", { weekday: "short" });
 
-      const match = orderTrendRaw.find((item) => item._id === dateStr);
+      const match = orderTrendRawMap[dateStr];
       orderTrend.push({
         date: dateStr,
         label: dayLabel,
@@ -93,18 +80,18 @@ router.get("/", async (req, res, next) => {
       completed: 0,
       cancelled: 0
     };
-    statusDistributionRaw.forEach((item) => {
-      if (item._id && statusDistribution[item._id] !== undefined) {
-        statusDistribution[item._id] = item.count;
+    allOrdersStatus.forEach((ord) => {
+      if (ord.status && statusDistribution[ord.status] !== undefined) {
+        statusDistribution[ord.status]++;
       }
     });
 
     res.json({
-      orders,
-      users,
-      tables,
-      categories,
-      menuItems,
+      orders: ordersCount,
+      users: usersCount,
+      tables: tablesCount,
+      categories: categoriesCount,
+      menuItems: menuItemsCount,
       orderTrend,
       statusDistribution
     });

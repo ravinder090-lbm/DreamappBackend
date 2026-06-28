@@ -11,13 +11,17 @@ router.get("/", async (req, res, next) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 0;
 
-    let query = User.find({ subAdmin: req.user.id }).sort({ createdAt: -1 });
+    const options = {
+      where: { subAdminId: req.user.id },
+      order: [["createdAt", "DESC"]]
+    };
 
     if (limit > 0) {
-      query = query.skip((page - 1) * limit).limit(limit);
+      options.limit = limit;
+      options.offset = (page - 1) * limit;
     }
 
-    const users = await query;
+    const users = await User.findAll(options);
     res.json(users);
   } catch (error) {
     next(error);
@@ -26,7 +30,7 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const user = await User.findOne({ _id: req.params.id, subAdmin: req.user.id });
+    const user = await User.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -40,7 +44,7 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const user = await User.create({ ...req.body, subAdmin: req.user.id });
+    const user = await User.create({ ...req.body, subAdminId: req.user.id });
     res.status(201).json(user);
   } catch (error) {
     next(error);
@@ -49,19 +53,15 @@ router.post("/", async (req, res, next) => {
 
 router.post("/:id", async (req, res, next) => {
   try {
-    const user = await User.findOneAndUpdate(
-      { _id: req.params.id, subAdmin: req.user.id },
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    const [updatedCount] = await User.update(req.body, {
+      where: { id: req.params.id, subAdminId: req.user.id }
+    });
 
-    if (!user) {
+    if (updatedCount === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const user = await User.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
     return res.json(user);
   } catch (error) {
     return next(error);
@@ -70,10 +70,11 @@ router.post("/:id", async (req, res, next) => {
 
 router.delete("/:id", async (req, res, next) => {
   try {
-    const user = await User.findOneAndDelete({ _id: req.params.id, subAdmin: req.user.id });
+    const user = await User.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
+    await User.destroy({ where: { id: req.params.id, subAdminId: req.user.id } });
     return res.status(204).send();
   } catch (error) {
     return next(error);

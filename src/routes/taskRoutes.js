@@ -5,7 +5,7 @@ const router = Router();
 
 router.get("/", async (req, res, next) => {
   try {
-    const tasks = await Task.find().sort({ createdAt: -1 });
+    const tasks = await Task.findAll({ order: [["createdAt", "DESC"]] });
     res.json(tasks);
   } catch (error) {
     next(error);
@@ -23,15 +23,15 @@ router.post("/", async (req, res, next) => {
 
 router.patch("/:id", async (req, res, next) => {
   try {
-    const task = await Task.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    const [updatedCount] = await Task.update(req.body, {
+      where: { id: req.params.id }
     });
 
-    if (!task) {
+    if (updatedCount === 0) {
       return res.status(404).json({ message: "Task not found" });
     }
 
+    const task = await Task.findByPk(req.params.id);
     return res.json(task);
   } catch (error) {
     return next(error);
@@ -40,12 +40,13 @@ router.patch("/:id", async (req, res, next) => {
 
 router.delete("/:id", async (req, res, next) => {
   try {
-    const task = await Task.findByIdAndDelete(req.params.id);
+    const task = await Task.findByPk(req.params.id);
 
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
 
+    await Task.destroy({ where: { id: req.params.id } });
     return res.status(204).send();
   } catch (error) {
     return next(error);

@@ -10,7 +10,7 @@ export async function seedSuperAdmin() {
     return;
   }
 
-  const existingSuperAdmin = await SuperAdmin.findOne({ email });
+  const existingSuperAdmin = await SuperAdmin.findOne({ where: { email } });
 
   if (existingSuperAdmin) {
     return;

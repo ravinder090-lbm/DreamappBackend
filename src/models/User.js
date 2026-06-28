@@ -1,42 +1,64 @@
-import mongoose from "mongoose";
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../lib/db.js";
+import { SubAdmin } from "./SubAdmin.js";
 
-const userSchema = new mongoose.Schema(
+export class User extends Model {}
+
+User.init(
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      }
+    },
     name: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     email: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     phone: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING,
+      defaultValue: "",
     },
     status: {
-      type: String,
-      enum: ["active", "inactive"],
-      default: "active",
+      type: DataTypes.STRING,
+      defaultValue: "active",
     },
     address: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING,
+      defaultValue: "",
     },
-    subAdmin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SubAdmin",
-      required: true,
-    },
+    subAdminId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: SubAdmin,
+        key: "id"
+      }
+    }
   },
   {
-    timestamps: true,
+    sequelize,
+    modelName: "User",
+    indexes: [
+      {
+        fields: ["subAdminId", "phone"]
+      },
+      {
+        fields: ["subAdminId", "createdAt"]
+      }
+    ]
   }
 );
 
-export const User = mongoose.model("User", userSchema);
+User.belongsTo(SubAdmin, { foreignKey: "subAdminId", as: "subAdmin" });
+SubAdmin.hasMany(User, { foreignKey: "subAdminId", as: "users" });

@@ -44,7 +44,7 @@ class WhatsAppManager {
       return;
     }
     try {
-      const activeSubAdmins = await SubAdmin.find({ whatsAppConnected: true });
+      const activeSubAdmins = await SubAdmin.findAll({ where: { whatsAppConnected: true } });
       console.log(`Restoring ${activeSubAdmins.length} WhatsApp session(s)...`);
       for (const sa of activeSubAdmins) {
         this.connectSession(sa._id.toString()).catch((err) => {
@@ -115,10 +115,10 @@ class WhatsAppManager {
           whatsAppNumber = whatsAppNumber.split("@")[0];
         }
 
-        await SubAdmin.findByIdAndUpdate(subAdminId, {
+        await SubAdmin.update({
           whatsAppConnected: true,
           whatsAppNumber: whatsAppNumber,
-        });
+        }, { where: { id: subAdminId } });
 
         if (this.io) {
           this.io.to(subAdminId).emit("whatsapp_status", {
@@ -145,10 +145,10 @@ class WhatsAppManager {
           // Logged out
           console.log(`Subadmin ${subAdminId} logged out of WhatsApp Web.`);
           this.qrCodes.delete(subAdminId);
-          await SubAdmin.findByIdAndUpdate(subAdminId, {
+          await SubAdmin.update({
             whatsAppConnected: false,
             whatsAppNumber: "",
-          });
+          }, { where: { id: subAdminId } });
 
           // Clean up session files
           try {
@@ -182,10 +182,10 @@ class WhatsAppManager {
     }
 
     this.qrCodes.delete(subAdminId);
-    await SubAdmin.findByIdAndUpdate(subAdminId, {
+    await SubAdmin.update({
       whatsAppConnected: false,
       whatsAppNumber: "",
-    });
+    }, { where: { id: subAdminId } });
 
     const sessionDir = path.join(SESSIONS_DIR, `subadmin_${subAdminId}`);
     try {

@@ -1,48 +1,56 @@
+import { DataTypes, Model } from "sequelize";
 import bcrypt from "bcryptjs";
-import mongoose from "mongoose";
+import { sequelize } from "../lib/db.js";
 
-const superAdminSchema = new mongoose.Schema(
+export class SuperAdmin extends Model {
+  async comparePassword(password) {
+    return bcrypt.compare(password, this.password);
+  }
+}
+
+SuperAdmin.init(
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      }
+    },
     name: {
-      type: String,
-      required: true,
-      trim: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     email: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
+      type: DataTypes.STRING,
+      allowNull: false,
       unique: true,
+      validate: {
+        isEmail: true,
+      },
     },
     password: {
-      type: String,
-      required: true,
-      minlength: 6,
-      select: false,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     role: {
-      type: String,
-      default: "superadmin",
-      immutable: true,
+      type: DataTypes.STRING,
+      defaultValue: "superadmin",
     },
   },
   {
-    timestamps: true,
+    sequelize,
+    modelName: "SuperAdmin",
+    hooks: {
+      beforeSave: async (superadmin) => {
+        if (superadmin.changed("password")) {
+          superadmin.password = await bcrypt.hash(superadmin.password, 12);
+        }
+      },
+    },
   }
 );
-
-superAdminSchema.pre("save", async function hashPassword(next) {
-  if (!this.isModified("password")) {
-    return next();
-  }
-
-  this.password = await bcrypt.hash(this.password, 12);
-  return next();
-});
-
-superAdminSchema.methods.comparePassword = function comparePassword(password) {
-  return bcrypt.compare(password, this.password);
-};
-
-export const SuperAdmin = mongoose.model("SuperAdmin", superAdminSchema);
