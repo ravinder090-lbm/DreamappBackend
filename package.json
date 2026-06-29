@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "build": "echo \"No build required for backend\""
+    "build": "echo \"No build required for backend\"",
+    "postinstall": "node patch-socketio.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc13",

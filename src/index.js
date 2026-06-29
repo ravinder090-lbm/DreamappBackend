@@ -17,10 +17,7 @@ import whatsappRoutes from "./routes/whatsappRoutes.js";
 import { whatsappManager } from "./lib/whatsappManager.js";
 import path from "path";
 import { createServer } from "http";
-
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const { Server } = require("socket.io");
+import { Server } from "socket.io";
 
 dotenv.config();
 
