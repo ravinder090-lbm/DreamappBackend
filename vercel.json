@@ -2,10 +2,10 @@
   "version": 2,
   "functions": {
     "index.js": {
-      "includeFiles": "node_modules/{retry-as-promised,whatsapp-rust-bridge}/**"
+      "includeFiles": "node_modules/**"
     },
     "api/index.js": {
-      "includeFiles": "node_modules/{retry-as-promised,whatsapp-rust-bridge}/**"
+      "includeFiles": "node_modules/**"
     }
   },
   "routes": [
