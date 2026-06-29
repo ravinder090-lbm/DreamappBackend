@@ -17,36 +17,54 @@ import whatsappRoutes from "./routes/whatsappRoutes.js";
 import { whatsappManager } from "./lib/whatsappManager.js";
 import path from "path";
 import { createServer } from "http";
-import { Server } from "socket.io";
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-  }
+const isVercel = Boolean(process.env.VERCEL);
+const socketCors = {
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+};
+const createNoopIo = () => ({
+  on: () => {},
+  to: () => ({
+    emit: () => {}
+  }),
+  emit: () => {}
 });
 
-whatsappManager.setIo(io);
+let httpServer = null;
+let io = createNoopIo();
 
-io.on("connection", (socket) => {
-  console.log(`Socket connected: ${socket.id}`);
-  
-  socket.on("join", (roomId) => {
-    if (roomId) {
-      socket.join(roomId);
-      console.log(`Socket ${socket.id} joined room ${roomId}`);
+if (!isVercel) {
+  const { Server } = await import("socket.io");
+  httpServer = createServer(app);
+  io = new Server(httpServer, {
+    cors: {
+      origin: socketCors.origin,
+      methods: socketCors.methods
     }
   });
 
-  socket.on("disconnect", () => {
-    console.log(`Socket disconnected: ${socket.id}`);
+  io.on("connection", (socket) => {
+    console.log(`Socket connected: ${socket.id}`);
+
+    socket.on("join", (roomId) => {
+      if (roomId) {
+        socket.join(roomId);
+        console.log(`Socket ${socket.id} joined room ${roomId}`);
+      }
+    });
+
+    socket.on("disconnect", () => {
+      console.log(`Socket disconnected: ${socket.id}`);
+    });
   });
-});
+}
+
+whatsappManager.setIo(io);
 
 app.use((req, res, next) => {
   req.io = io;
@@ -119,7 +137,7 @@ connectDB()
     whatsappManager.initializeAll().catch((err) => {
       console.error("Error restoring WhatsApp sessions:", err);
     });
-    if (process.env.NODE_ENV !== 'production') {
+    if (httpServer) {
       httpServer.listen(port, () => {
         console.log(`Server listening on http://localhost:${port}`);
       });
@@ -127,7 +145,7 @@ connectDB()
   })
   .catch((error) => {
     console.error("Failed to start server:", error.message);
-    if (process.env.NODE_ENV !== 'production') {
+    if (!isVercel) {
       process.exit(1);
     }
   });
