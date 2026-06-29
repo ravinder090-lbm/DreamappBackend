@@ -1,6 +1,11 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+
+// Force Vercel Node File Trace to bundle socket.io and engine.io dist files
+import "../node_modules/socket.io/dist/index.js";
+import "../node_modules/engine.io/build/engine.io.js";
+
 import { connectDB } from "./lib/db.js";
 import { seedSuperAdmin } from "./lib/seedSuperAdmin.js";
 import authRoutes from "./routes/authRoutes.js";
