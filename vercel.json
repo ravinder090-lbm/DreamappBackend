@@ -1,6 +1,9 @@
 {
   "version": 2,
   "functions": {
+    "index.js": {
+      "includeFiles": "node_modules/whatsapp-rust-bridge/**"
+    },
     "api/index.js": {
       "includeFiles": "node_modules/whatsapp-rust-bridge/**"
     }
