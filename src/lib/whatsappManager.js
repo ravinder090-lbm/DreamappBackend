@@ -1,4 +1,3 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
 import pino from "pino";
 import QRCode from "qrcode";
 import fs from "fs";
@@ -66,6 +65,7 @@ class WhatsAppManager {
     }
 
     const sessionDir = path.join(SESSIONS_DIR, `subadmin_${subAdminId}`);
+    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = await import("@whiskeysockets/baileys");
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
     const logger = pino({ level: "silent" });
