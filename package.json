@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "build": "echo \"No build required for backend\""
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc13",
