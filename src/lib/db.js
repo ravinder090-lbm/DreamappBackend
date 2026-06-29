@@ -9,10 +9,19 @@ console.log("PG Loaded:", !!pg);
 
 const databaseUrl = process.env.DATABASE_URL;
 
-export const sequelize = new Sequelize(databaseUrl, {
+import dns from "node:dns";
+
+dns.setDefaultResultOrder("ipv4first");
+
+export const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "postgres",
-  dialectModule: pg,
   logging: false,
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false,
+    },
+  },
 });
 
 
