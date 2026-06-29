@@ -7,3 +7,4 @@ npm-debug.log*
 server/.env
 client/.env.local
 public/uploads
+.vercel
