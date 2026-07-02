@@ -1,6 +1,7 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import "retry-as-promised";
 import { connectDB } from "./lib/db.js";
 import { seedSuperAdmin } from "./lib/seedSuperAdmin.js";
 import authRoutes from "./routes/authRoutes.js";
