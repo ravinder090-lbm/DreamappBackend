@@ -6,7 +6,31 @@
       "includeFiles": "node_modules/retry-as-promised/**"
     }
   },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Origin,X-Requested-With,Content-Type,Accept,Authorization,X-CSRF-Token,Accept-Version,Content-Length,Content-MD5,Date,X-Api-Version" },
+        { "key": "Access-Control-Allow-Credentials", "value": "true" }
+      ]
+    }
+  ],
   "routes": [
+    {
+      "src": "/(.*)",
+      "methods": ["OPTIONS"],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        "Access-Control-Allow-Headers": "Origin,X-Requested-With,Content-Type,Accept,Authorization,X-CSRF-Token,Accept-Version,Content-Length,Content-MD5,Date,X-Api-Version",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Max-Age": "86400"
+      },
+      "status": 204,
+      "continue": false
+    },
     {
       "src": "/(.*)",
       "dest": "api/index.js"
