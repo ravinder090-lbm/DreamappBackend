@@ -16,65 +16,55 @@ import webhookRoutes from "./routes/webhookRoutes.js";
 import whatsappRoutes from "./routes/whatsappRoutes.js";
 import { whatsappManager } from "./lib/whatsappManager.js";
 import path from "path";
-// import { createServer } from "http"; // SOCKET.IO — uncomment when re-enabling
+import { createServer } from "http";
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
-// const isVercel = Boolean(process.env.VERCEL); // SOCKET.IO — uncomment when re-enabling
+const isVercel = Boolean(process.env.VERCEL);
 
-// ─── SOCKET.IO (commented out — re-enable when needed) ───────────────────────
-// const socketCors = {
-//   origin: "*",
-//   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-// };
-// const createNoopIo = () => ({
-//   on: () => {},
-//   to: () => ({ emit: () => {} }),
-//   emit: () => {}
-// });
-//
-// let httpServer = null;
-// let io = createNoopIo();
-//
-// if (!isVercel) {
-//   // Use a variable so Vercel's static file tracer does NOT bundle socket.io
-//   const socketLib = "socket" + ".io";
-//   const { Server } = await import(socketLib);
-//   httpServer = createServer(app);
-//   io = new Server(httpServer, {
-//     cors: {
-//       origin: socketCors.origin,
-//       methods: socketCors.methods
-//     }
-//   });
-//
-//   io.on("connection", (socket) => {
-//     console.log(`Socket connected: ${socket.id}`);
-//
-//     socket.on("join", (roomId) => {
-//       if (roomId) {
-//         socket.join(roomId);
-//         console.log(`Socket ${socket.id} joined room ${roomId}`);
-//       }
-//     });
-//
-//     socket.on("disconnect", () => {
-//       console.log(`Socket disconnected: ${socket.id}`);
-//     });
-//   });
-// }
-//
-// whatsappManager.setIo(io);
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Noop io stub so whatsappManager doesn't crash without socket.io
-const io = {
+const socketCors = {
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+};
+const createNoopIo = () => ({
   on: () => {},
   to: () => ({ emit: () => {} }),
   emit: () => {}
-};
+});
+
+let httpServer = null;
+let io = createNoopIo();
+
+if (!isVercel) {
+  // Use a variable so Vercel's static file tracer does NOT bundle socket.io
+  const socketLib = "socket" + ".io";
+  const { Server } = await import(socketLib);
+  httpServer = createServer(app);
+  io = new Server(httpServer, {
+    cors: {
+      origin: socketCors.origin,
+      methods: socketCors.methods
+    }
+  });
+
+  io.on("connection", (socket) => {
+    console.log(`Socket connected: ${socket.id}`);
+
+    socket.on("join", (roomId) => {
+      if (roomId) {
+        socket.join(roomId);
+        console.log(`Socket ${socket.id} joined room ${roomId}`);
+      }
+    });
+
+    socket.on("disconnect", () => {
+      console.log(`Socket disconnected: ${socket.id}`);
+    });
+  });
+}
+
 whatsappManager.setIo(io);
 
 app.use((req, res, next) => {
@@ -140,15 +130,15 @@ connectDB()
     whatsappManager.initializeAll().catch((err) => {
       console.error("Error restoring WhatsApp sessions:", err);
     });
-    // SOCKET.IO — uncomment httpServer.listen when re-enabling socket.io
-    // if (httpServer) {
-    //   httpServer.listen(port, () => {
-    //     console.log(`Server listening on http://localhost:${port}`);
-    //   });
-    // }
-    app.listen(port, () => {
-      console.log(`Server listening on http://localhost:${port}`);
-    });
+    if (httpServer) {
+      httpServer.listen(port, () => {
+        console.log(`Server listening on http://localhost:${port}`);
+      });
+    } else {
+      app.listen(port, () => {
+        console.log(`Server listening on http://localhost:${port}`);
+      });
+    }
   })
   .catch((error) => {
     console.error("Failed to start server:", error.message);
