@@ -9,7 +9,6 @@ function patchPackageJson(packagePath, targetReplace) {
       return;
     }
     let content = fs.readFileSync(pkgPath, 'utf8');
-    // Replace "./wrapper.mjs" with the CommonJS target
     content = content.replace('"./wrapper.mjs"', `"${targetReplace}"`);
     fs.writeFileSync(pkgPath, content, 'utf8');
     console.log(`Patched ${pkgPath} successfully.`);
@@ -32,29 +31,27 @@ function ensureRetryAsPromised() {
     const distFile = path.join(base, 'dist', 'index.js');
     const rootFile = path.join(base, 'index.js');
 
-    // If dist/index.js exists, ensure root index.js is also the same file (belt-and-suspenders)
-    if (fs.existsSync(distFile) && !fs.existsSync(rootFile)) {
-      fs.copyFileSync(distFile, rootFile);
-      console.log('Copied retry-as-promised/dist/index.js -> retry-as-promised/index.js');
+    // Vercel's .gitignore strips any folder named "dist" from the bundle.
+    // The root index.js has identical content and is NEVER stripped.
+    // So we always redirect main -> index.js (root level).
+    // Ensure root index.js exists (copy from dist if needed).
+    if (!fs.existsSync(rootFile)) {
+      if (fs.existsSync(distFile)) {
+        fs.copyFileSync(distFile, rootFile);
+        console.log('Copied retry-as-promised/dist/index.js -> index.js');
+      } else {
+        console.log('WARNING: neither root index.js nor dist/index.js found!');
+        return;
+      }
     }
 
-    // Ensure dist/ folder exists by copying root -> dist if dist is missing
-    const distDir = path.join(base, 'dist');
-    if (!fs.existsSync(distDir)) {
-      fs.mkdirSync(distDir, { recursive: true });
-    }
-    if (!fs.existsSync(distFile) && fs.existsSync(rootFile)) {
-      fs.copyFileSync(rootFile, distFile);
-      console.log('Copied retry-as-promised/index.js -> retry-as-promised/dist/index.js');
-    }
-
-    // Patch main to point to dist/index.js (the canonical location)
-    if (pkg.main !== 'dist/index.js') {
-      pkg.main = 'dist/index.js';
+    // Always set main to root index.js — avoids the dist/ gitignore exclusion
+    if (pkg.main !== 'index.js') {
+      pkg.main = 'index.js';
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
-      console.log('Patched retry-as-promised/package.json: main -> dist/index.js');
+      console.log('Patched retry-as-promised/package.json: main -> index.js');
     } else {
-      console.log('retry-as-promised/package.json already correct.');
+      console.log('retry-as-promised already patched.');
     }
   } catch (err) {
     console.error('Failed to patch retry-as-promised:', err);
