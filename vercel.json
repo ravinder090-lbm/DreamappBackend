@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "buildCommand": "npm run build",
   "functions": {
     "index.js": {
       "includeFiles": "node_modules/{retry-as-promised,whatsapp-rust-bridge}/**"
