@@ -3,10 +3,10 @@
   "buildCommand": "npm run build",
   "functions": {
     "index.js": {
-      "includeFiles": "node_modules/whatsapp-rust-bridge/**"
+      "includeFiles": "node_modules/@(retry-as-promised|whatsapp-rust-bridge)/**"
     },
     "api/index.js": {
-      "includeFiles": "node_modules/whatsapp-rust-bridge/**"
+      "includeFiles": "node_modules/@(retry-as-promised|whatsapp-rust-bridge)/**"
     }
   },
   "routes": [
