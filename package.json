@@ -27,7 +27,6 @@
     "qrcode": "^1.5.4",
     "retry-as-promised": "^7.1.1",
     "sequelize": "^6.37.8",
-    "socket.io": "^4.8.3",
     "whatsapp-rust-bridge": "^0.5.4"
   },
   "devDependencies": {

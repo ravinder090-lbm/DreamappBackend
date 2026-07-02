@@ -16,57 +16,65 @@ import webhookRoutes from "./routes/webhookRoutes.js";
 import whatsappRoutes from "./routes/whatsappRoutes.js";
 import { whatsappManager } from "./lib/whatsappManager.js";
 import path from "path";
-import { createServer } from "http";
+// import { createServer } from "http"; // SOCKET.IO — uncomment when re-enabling
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
-const isVercel = Boolean(process.env.VERCEL);
-const socketCors = {
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-};
-const createNoopIo = () => ({
+// const isVercel = Boolean(process.env.VERCEL); // SOCKET.IO — uncomment when re-enabling
+
+// ─── SOCKET.IO (commented out — re-enable when needed) ───────────────────────
+// const socketCors = {
+//   origin: "*",
+//   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+// };
+// const createNoopIo = () => ({
+//   on: () => {},
+//   to: () => ({ emit: () => {} }),
+//   emit: () => {}
+// });
+//
+// let httpServer = null;
+// let io = createNoopIo();
+//
+// if (!isVercel) {
+//   // Use a variable so Vercel's static file tracer does NOT bundle socket.io
+//   const socketLib = "socket" + ".io";
+//   const { Server } = await import(socketLib);
+//   httpServer = createServer(app);
+//   io = new Server(httpServer, {
+//     cors: {
+//       origin: socketCors.origin,
+//       methods: socketCors.methods
+//     }
+//   });
+//
+//   io.on("connection", (socket) => {
+//     console.log(`Socket connected: ${socket.id}`);
+//
+//     socket.on("join", (roomId) => {
+//       if (roomId) {
+//         socket.join(roomId);
+//         console.log(`Socket ${socket.id} joined room ${roomId}`);
+//       }
+//     });
+//
+//     socket.on("disconnect", () => {
+//       console.log(`Socket disconnected: ${socket.id}`);
+//     });
+//   });
+// }
+//
+// whatsappManager.setIo(io);
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Noop io stub so whatsappManager doesn't crash without socket.io
+const io = {
   on: () => {},
-  to: () => ({
-    emit: () => {}
-  }),
+  to: () => ({ emit: () => {} }),
   emit: () => {}
-});
-
-let httpServer = null;
-let io = createNoopIo();
-
-if (!isVercel) {
-  // Use a variable so Vercel's static file tracer does NOT bundle socket.io
-  // (socket.io is not used on Vercel — the noop stub above is used instead)
-  const socketLib = "socket" + ".io";
-  const { Server } = await import(socketLib);
-  httpServer = createServer(app);
-  io = new Server(httpServer, {
-    cors: {
-      origin: socketCors.origin,
-      methods: socketCors.methods
-    }
-  });
-
-  io.on("connection", (socket) => {
-    console.log(`Socket connected: ${socket.id}`);
-
-    socket.on("join", (roomId) => {
-      if (roomId) {
-        socket.join(roomId);
-        console.log(`Socket ${socket.id} joined room ${roomId}`);
-      }
-    });
-
-    socket.on("disconnect", () => {
-      console.log(`Socket disconnected: ${socket.id}`);
-    });
-  });
-}
-
+};
 whatsappManager.setIo(io);
 
 app.use((req, res, next) => {
@@ -96,15 +104,7 @@ app.use(cors({
   credentials: true,
   optionsSuccessStatus: 200
 }));
-// app.use((req, res, next) => {
-//   res.header('Access-Control-Allow-Origin', '*');
-//   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,PATCH,DELETE,OPTIONS');
-//   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
-//   if (req.method === 'OPTIONS') {
-//     return res.status(200).end();
-//   }
-//   next();
-// });
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
@@ -140,21 +140,19 @@ connectDB()
     whatsappManager.initializeAll().catch((err) => {
       console.error("Error restoring WhatsApp sessions:", err);
     });
-    if (httpServer) {
-      httpServer.listen(port, () => {
-        console.log(`Server listening on http://localhost:${port}`);
-      });
-    }
+    // SOCKET.IO — uncomment httpServer.listen when re-enabling socket.io
+    // if (httpServer) {
+    //   httpServer.listen(port, () => {
+    //     console.log(`Server listening on http://localhost:${port}`);
+    //   });
+    // }
+    app.listen(port, () => {
+      console.log(`Server listening on http://localhost:${port}`);
+    });
   })
   .catch((error) => {
     console.error("Failed to start server:", error.message);
-    if (!isVercel) {
-      process.exit(1);
-    }
+    process.exit(1);
   });
 
 export default app;
-// restart trigger 6
-
-
-

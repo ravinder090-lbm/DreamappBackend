@@ -1,22 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 
-function patchPackageJson(packagePath, targetReplace) {
-  try {
-    const pkgPath = path.resolve(process.cwd(), packagePath);
-    if (!fs.existsSync(pkgPath)) {
-      console.log(`Package.json not found at ${pkgPath}`);
-      return;
-    }
-    let content = fs.readFileSync(pkgPath, 'utf8');
-    content = content.replace('"./wrapper.mjs"', `"${targetReplace}"`);
-    fs.writeFileSync(pkgPath, content, 'utf8');
-    console.log(`Patched ${pkgPath} successfully.`);
-  } catch (err) {
-    console.error(`Failed to patch ${packagePath}:`, err);
-  }
-}
-
 function ensureRetryAsPromised() {
   try {
     const base = path.resolve(process.cwd(), 'node_modules/retry-as-promised');
@@ -33,8 +17,7 @@ function ensureRetryAsPromised() {
 
     // Vercel's .gitignore strips any folder named "dist" from the bundle.
     // The root index.js has identical content and is NEVER stripped.
-    // So we always redirect main -> index.js (root level).
-    // Ensure root index.js exists (copy from dist if needed).
+    // Always redirect main -> index.js (root level).
     if (!fs.existsSync(rootFile)) {
       if (fs.existsSync(distFile)) {
         fs.copyFileSync(distFile, rootFile);
@@ -45,7 +28,6 @@ function ensureRetryAsPromised() {
       }
     }
 
-    // Always set main to root index.js — avoids the dist/ gitignore exclusion
     if (pkg.main !== 'index.js') {
       pkg.main = 'index.js';
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
@@ -58,6 +40,4 @@ function ensureRetryAsPromised() {
   }
 }
 
-patchPackageJson('node_modules/socket.io/package.json', './dist/index.js');
-patchPackageJson('node_modules/engine.io/package.json', './build/engine.io.js');
 ensureRetryAsPromised();
