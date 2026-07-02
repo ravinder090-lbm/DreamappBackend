@@ -18,29 +18,49 @@ function patchPackageJson(packagePath, targetReplace) {
   }
 }
 
-function patchMain(packagePath, from, to) {
+function ensureRetryAsPromised() {
   try {
-    const pkgPath = path.resolve(process.cwd(), packagePath);
+    const base = path.resolve(process.cwd(), 'node_modules/retry-as-promised');
+    const pkgPath = path.join(base, 'package.json');
+
     if (!fs.existsSync(pkgPath)) {
-      console.log(`Package.json not found at ${pkgPath}`);
+      console.log('retry-as-promised not found, skipping.');
       return;
     }
+
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    if (pkg.main === from) {
-      pkg.main = to;
+    const distFile = path.join(base, 'dist', 'index.js');
+    const rootFile = path.join(base, 'index.js');
+
+    // If dist/index.js exists, ensure root index.js is also the same file (belt-and-suspenders)
+    if (fs.existsSync(distFile) && !fs.existsSync(rootFile)) {
+      fs.copyFileSync(distFile, rootFile);
+      console.log('Copied retry-as-promised/dist/index.js -> retry-as-promised/index.js');
+    }
+
+    // Ensure dist/ folder exists by copying root -> dist if dist is missing
+    const distDir = path.join(base, 'dist');
+    if (!fs.existsSync(distDir)) {
+      fs.mkdirSync(distDir, { recursive: true });
+    }
+    if (!fs.existsSync(distFile) && fs.existsSync(rootFile)) {
+      fs.copyFileSync(rootFile, distFile);
+      console.log('Copied retry-as-promised/index.js -> retry-as-promised/dist/index.js');
+    }
+
+    // Patch main to point to dist/index.js (the canonical location)
+    if (pkg.main !== 'dist/index.js') {
+      pkg.main = 'dist/index.js';
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
-      console.log(`Patched main in ${pkgPath}: ${from} -> ${to}`);
+      console.log('Patched retry-as-promised/package.json: main -> dist/index.js');
     } else {
-      console.log(`No patch needed for ${pkgPath} (main is already "${pkg.main}")`);
+      console.log('retry-as-promised/package.json already correct.');
     }
   } catch (err) {
-    console.error(`Failed to patch main in ${packagePath}:`, err);
+    console.error('Failed to patch retry-as-promised:', err);
   }
 }
 
 patchPackageJson('node_modules/socket.io/package.json', './dist/index.js');
 patchPackageJson('node_modules/engine.io/package.json', './build/engine.io.js');
-
-// retry-as-promised ships dist/index.js but Vercel's file tracer misses the dist/ folder.
-// The root index.js is identical and always gets traced, so we redirect "main" to it.
-patchMain('node_modules/retry-as-promised/package.json', 'dist/index.js', 'index.js');
+ensureRetryAsPromised();

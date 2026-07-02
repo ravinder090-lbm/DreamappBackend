@@ -1,12 +1,9 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
+  "buildCommand": "node patch-socketio.js",
   "functions": {
-    "index.js": {
-      "includeFiles": "node_modules/whatsapp-rust-bridge/**"
-    },
     "api/index.js": {
-      "includeFiles": "node_modules/whatsapp-rust-bridge/**"
+      "includeFiles": "node_modules/retry-as-promised/**"
     }
   },
   "routes": [
