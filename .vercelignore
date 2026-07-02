@@ -1,0 +1,4 @@
+# Re-include node_modules dist folders that are excluded by .gitignore's "dist" rule.
+# Without this, Vercel strips dist/ from all packages (e.g. retry-as-promised/dist/)
+!node_modules/**/dist
+!node_modules/**/dist/**
