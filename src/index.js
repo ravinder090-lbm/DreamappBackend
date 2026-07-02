@@ -39,7 +39,10 @@ let httpServer = null;
 let io = createNoopIo();
 
 if (!isVercel) {
-  const { Server } = await import("socket.io");
+  // Use a variable so Vercel's static file tracer does NOT bundle socket.io
+  // (socket.io is not used on Vercel — the noop stub above is used instead)
+  const socketLib = "socket" + ".io";
+  const { Server } = await import(socketLib);
   httpServer = createServer(app);
   io = new Server(httpServer, {
     cors: {
