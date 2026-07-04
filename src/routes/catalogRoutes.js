@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Op } from "sequelize";
 import { requireAuth } from "../middleware/auth.js";
 import { Category } from "../models/Category.js";
 import { MenuItem } from "../models/MenuItem.js";
@@ -13,6 +14,7 @@ router.get("/", async (req, res, next) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 0;
     const type = req.query.type; // 'categories', 'menu-items', or 'banners'
+    const search = req.query.search || "";
 
     if (type) {
       let items;
@@ -27,11 +29,29 @@ router.get("/", async (req, res, next) => {
       }
 
       if (type === "categories") {
+        if (search) {
+          options.where[Op.or] = [
+            { name: { [Op.iLike]: `%${search}%` } },
+            { description: { [Op.iLike]: `%${search}%` } }
+          ];
+        }
         items = await Category.findAll(options);
       } else if (type === "menu-items") {
         options.include = [{ model: Category, as: "category" }];
+        if (search) {
+          options.where[Op.or] = [
+            { name: { [Op.iLike]: `%${search}%` } },
+            { description: { [Op.iLike]: `%${search}%` } }
+          ];
+        }
         items = await MenuItem.findAll(options);
       } else if (type === "banners") {
+        if (search) {
+          options.where[Op.or] = [
+            { title: { [Op.iLike]: `%${search}%` } },
+            { description: { [Op.iLike]: `%${search}%` } }
+          ];
+        }
         items = await Banner.findAll(options);
       } else {
         return res.status(400).json({ message: "Invalid type parameter" });

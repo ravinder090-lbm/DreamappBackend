@@ -135,6 +135,7 @@ router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
       enableTakeAway: subAdmin.enableTakeAway !== false,
       enableDelivery: subAdmin.enableDelivery !== false,
       enableCOD: subAdmin.enableCOD !== false,
+      autoAcceptOrders: subAdmin.autoAcceptOrders !== false,
       sgstPercent: subAdmin.sgstPercent || 0,
       cgstPercent: subAdmin.cgstPercent || 0,
       deliveryCharges: subAdmin.deliveryCharges || 0,
@@ -146,7 +147,7 @@ router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
 
 router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
   try {
-    const { address, deliveryRadius, lat, lng, themeColor, logo, enableDineIn, enableTakeAway, enableDelivery, enableCOD, sgstPercent, cgstPercent, deliveryCharges } = req.body;
+    const { address, deliveryRadius, lat, lng, themeColor, logo, enableDineIn, enableTakeAway, enableDelivery, enableCOD, autoAcceptOrders, sgstPercent, cgstPercent, deliveryCharges } = req.body;
 
     const updateData = {};
     if (address !== undefined) updateData.address = address;
@@ -159,6 +160,7 @@ router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
     if (enableTakeAway !== undefined) updateData.enableTakeAway = !!enableTakeAway;
     if (enableDelivery !== undefined) updateData.enableDelivery = !!enableDelivery;
     if (enableCOD !== undefined) updateData.enableCOD = !!enableCOD;
+    if (autoAcceptOrders !== undefined) updateData.autoAcceptOrders = !!autoAcceptOrders;
     if (sgstPercent !== undefined) updateData.sgstPercent = Number(sgstPercent) || 0;
     if (cgstPercent !== undefined) updateData.cgstPercent = Number(cgstPercent) || 0;
     if (deliveryCharges !== undefined) updateData.deliveryCharges = Number(deliveryCharges) || 0;
@@ -189,6 +191,7 @@ router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
         enableTakeAway: subAdmin.enableTakeAway !== false,
         enableDelivery: subAdmin.enableDelivery !== false,
         enableCOD: subAdmin.enableCOD !== false,
+        autoAcceptOrders: subAdmin.autoAcceptOrders !== false,
         sgstPercent: subAdmin.sgstPercent || 0,
         cgstPercent: subAdmin.cgstPercent || 0,
         deliveryCharges: subAdmin.deliveryCharges || 0,

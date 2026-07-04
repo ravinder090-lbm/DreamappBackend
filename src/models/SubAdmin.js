@@ -97,6 +97,10 @@ SubAdmin.init(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    autoAcceptOrders: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
     sgstPercent: {
       type: DataTypes.FLOAT,
       defaultValue: 0,

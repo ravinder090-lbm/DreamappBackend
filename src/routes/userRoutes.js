@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Op } from "sequelize";
 import { requireAuth } from "../middleware/auth.js";
 import { User } from "../models/User.js";
 
@@ -10,11 +11,20 @@ router.get("/", async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 0;
+    const search = req.query.search || "";
 
     const options = {
       where: { subAdminId: req.user.id },
       order: [["createdAt", "DESC"]]
     };
+
+    if (search) {
+      options.where[Op.or] = [
+        { name: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
 
     if (limit > 0) {
       options.limit = limit;
