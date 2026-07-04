@@ -31,15 +31,30 @@ router.post("/connect", async (req, res, next) => {
   try {
     const subAdminId = req.user.id.toString();
     
-    // Start or get session connection in background
-    whatsappManager.connectSession(subAdminId).catch((err) => {
-      console.error(`Error connecting WhatsApp for subadmin ${subAdminId}:`, err);
-    });
+    // Start or get session connection
+    try {
+      await whatsappManager.connectSession(subAdminId);
+    } catch (err) {
+      return res.status(400).json({ message: err.message });
+    }
 
-    // Short sleep to allow the socket to try connecting and potentially get QR code
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Wait up to 15 seconds for the QR code to generate
+    let attempts = 0;
+    while (attempts < 30) {
+      const mgrStatus = whatsappManager.getStatus(subAdminId);
+      if (mgrStatus.qr || mgrStatus.active) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      attempts++;
+    }
     
     const mgrStatus = whatsappManager.getStatus(subAdminId);
+    
+    if (!mgrStatus.qr && !mgrStatus.active) {
+       return res.status(408).json({ message: "Timeout waiting for WhatsApp to generate QR code. Please try again." });
+    }
+
     return res.json({
       message: "WhatsApp connection process started.",
       qr: mgrStatus.qr,
