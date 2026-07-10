@@ -19,7 +19,7 @@ router.get("/menu/:tableId", async (req, res, next) => {
       include: [{
         model: SubAdmin,
         as: "subAdmin",
-        attributes: ["id", "name", "address", "deliveryRadius", "lat", "lng", "themeColor", "logo", "enableDineIn", "enableTakeAway", "enableDelivery", "enableCOD", "sgstPercent", "cgstPercent", "deliveryCharges"]
+        attributes: ["id", "name", "address", "deliveryRadius", "lat", "lng", "themeColor", "publicMenuTheme", "logo", "enableDineIn", "enableTakeAway", "enableDelivery", "enableCOD", "sgstPercent", "cgstPercent", "deliveryCharges"]
       }]
     });
 
@@ -507,6 +507,33 @@ router.post("/orders/:orderId/status", async (req, res, next) => {
     }
 
     return res.json(order);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// POST /api/public/call-waiter - Notify subadmin that a table needs assistance
+router.post("/call-waiter", async (req, res, next) => {
+  try {
+    const { tableId } = req.body;
+    if (!tableId) {
+      return res.status(400).json({ message: "Table ID is required" });
+    }
+
+    const table = await Table.findByPk(tableId);
+    if (!table) {
+      return res.status(404).json({ message: "Table not found" });
+    }
+
+    if (req.io) {
+      req.io.to(table.subAdminId.toString()).emit("waiter_called", {
+        tableId: table.id,
+        tableName: table.name,
+        timestamp: new Date()
+      });
+    }
+
+    return res.json({ message: "Waiter has been notified!" });
   } catch (error) {
     return next(error);
   }

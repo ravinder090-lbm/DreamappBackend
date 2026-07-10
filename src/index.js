@@ -43,6 +43,7 @@ if (!isVercel) {
   const { Server } = await import(socketLib);
   httpServer = createServer(app);
   io = new Server(httpServer, {
+    maxHttpBufferSize: 1e8, // 100 MB
     cors: {
       origin: socketCors.origin,
       methods: socketCors.methods

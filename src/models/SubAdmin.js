@@ -81,6 +81,18 @@ SubAdmin.init(
       type: DataTypes.STRING,
       defaultValue: "#1d6f56",
     },
+    publicMenuTheme: {
+      type: DataTypes.STRING,
+      defaultValue: "default",
+    },
+    waiterTone: {
+      type: DataTypes.TEXT,
+      defaultValue: "default",
+    },
+    orderTone: {
+      type: DataTypes.TEXT,
+      defaultValue: "default",
+    },
     enableDineIn: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
@@ -100,6 +112,14 @@ SubAdmin.init(
     autoAcceptOrders: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
+    },
+    resetPasswordOtp: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    resetPasswordOtpExpires: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     sgstPercent: {
       type: DataTypes.FLOAT,
