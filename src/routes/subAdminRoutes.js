@@ -12,7 +12,8 @@ router.get("/", async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 0;
 
     const options = {
-      order: [["createdAt", "DESC"]]
+      order: [["createdAt", "DESC"]],
+      include: ["subscriptionPlan"]
     };
 
     if (limit > 0) {
@@ -46,7 +47,9 @@ router.post("/:id", async (req, res, next) => {
       return res.status(404).json({ message: "Subadmin not found" });
     }
 
-    const subAdmin = await SubAdmin.findByPk(req.params.id);
+    const subAdmin = await SubAdmin.findByPk(req.params.id, {
+      include: ["subscriptionPlan"]
+    });
     return res.json(subAdmin);
   } catch (error) {
     return next(error);

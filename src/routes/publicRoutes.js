@@ -12,6 +12,34 @@ import { geocodeAddress, getHaversineDistance } from "../lib/googleMaps.js";
 
 const router = Router();
 
+router.get("/restaurant/:slug", async (req, res, next) => {
+  try {
+    const slug = req.params.slug;
+    const subAdmins = await SubAdmin.findAll({ attributes: ["id", "name", "logo", "themeColor"] });
+    
+    const restaurant = subAdmins.find(sa => {
+      const saSlug = (sa.name || "store")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      return saSlug === slug;
+    });
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    res.json({
+      name: restaurant.name,
+      logo: restaurant.logo,
+      themeColor: restaurant.themeColor || "#1d6f56"
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/menu/:tableId", async (req, res, next) => {
   try {
     const table = await Table.findOne({

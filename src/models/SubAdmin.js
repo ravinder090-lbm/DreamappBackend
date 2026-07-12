@@ -133,6 +133,14 @@ SubAdmin.init(
       type: DataTypes.FLOAT,
       defaultValue: 0,
     },
+    subscriptionPlanId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    subscriptionStatus: {
+      type: DataTypes.STRING,
+      defaultValue: "active",
+    },
   },
   {
     sequelize,

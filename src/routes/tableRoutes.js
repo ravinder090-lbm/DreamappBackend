@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Op } from "sequelize";
 import { requireAuth } from "../middleware/auth.js";
 import { Table } from "../models/Table.js";
+import { SubAdmin } from "../models/SubAdmin.js";
 
 const router = Router();
 
@@ -53,6 +54,19 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
+    const subAdmin = await SubAdmin.findByPk(req.user.id, { include: ["subscriptionPlan"] });
+    let limit = 2; // Default free tier limit
+    if (subAdmin && subAdmin.subscriptionPlan && subAdmin.subscriptionPlan.tableLimit !== null) {
+      limit = subAdmin.subscriptionPlan.tableLimit;
+    }
+
+    if (limit !== null) {
+      const tableCount = await Table.count({ where: { subAdminId: req.user.id } });
+      if (tableCount >= limit) {
+        return res.status(403).json({ message: "Table limit reached. Please purchase a plan to add more tables." });
+      }
+    }
+
     const table = await Table.create({ ...req.body, subAdminId: req.user.id });
     res.status(201).json(table);
   } catch (error) {

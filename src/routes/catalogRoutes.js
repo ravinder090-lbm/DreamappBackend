@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { Category } from "../models/Category.js";
 import { MenuItem } from "../models/MenuItem.js";
 import { Banner } from "../models/Banner.js";
+import { SubAdmin } from "../models/SubAdmin.js";
 
 const router = Router();
 
@@ -146,6 +147,19 @@ router.delete("/categories/:id", async (req, res, next) => {
 
 router.post("/menu-items", async (req, res, next) => {
   try {
+    const subAdmin = await SubAdmin.findByPk(req.user.id, { include: ["subscriptionPlan"] });
+    let limit = 10; // Default free tier limit
+    if (subAdmin && subAdmin.subscriptionPlan && subAdmin.subscriptionPlan.menuLimit !== null) {
+      limit = subAdmin.subscriptionPlan.menuLimit;
+    }
+
+    if (limit !== null) {
+      const menuCount = await MenuItem.count({ where: { subAdminId: req.user.id } });
+      if (menuCount >= limit) {
+        return res.status(403).json({ message: "Menu item limit reached. Please purchase a plan to add more." });
+      }
+    }
+
     if (req.body.category) {
       req.body.categoryId = req.body.category;
     }
@@ -228,6 +242,19 @@ router.delete("/menu-items/:id", async (req, res, next) => {
 
 router.post("/banners", async (req, res, next) => {
   try {
+    const subAdmin = await SubAdmin.findByPk(req.user.id, { include: ["subscriptionPlan"] });
+    let limit = 1; // Default free tier limit
+    if (subAdmin && subAdmin.subscriptionPlan && subAdmin.subscriptionPlan.bannerLimit !== null) {
+      limit = subAdmin.subscriptionPlan.bannerLimit;
+    }
+
+    if (limit !== null) {
+      const bannerCount = await Banner.count({ where: { subAdminId: req.user.id } });
+      if (bannerCount >= limit) {
+        return res.status(403).json({ message: "Banner limit reached. Please purchase a plan to add more." });
+      }
+    }
+
     const banner = await Banner.create({ ...req.body, subAdminId: req.user.id });
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");

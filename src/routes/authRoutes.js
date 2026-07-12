@@ -51,6 +51,7 @@ router.post("/login", async (req, res, next) => {
         email: user.email,
         logo: user.logo || "",
         role,
+        ...(role === "subadmin" && { subscriptionPlan: await user.getSubscriptionPlan() })
       },
     });
   } catch (error) {
@@ -58,15 +59,25 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
-router.get("/me", requireAuth(["superadmin", "subadmin"]), (req, res) => {
-  res.json({ user: req.user });
+router.get("/me", requireAuth(["superadmin", "subadmin"]), async (req, res, next) => {
+  try {
+    if (req.user.role === "subadmin") {
+      const subAdmin = await SubAdmin.findByPk(req.user.id, { include: ["subscriptionPlan"] });
+      if (subAdmin) {
+        return res.json({ user: { ...req.user, subscriptionPlan: subAdmin.subscriptionPlan } });
+      }
+    }
+    res.json({ user: req.user });
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.put("/profile", requireAuth(["subadmin"]), async (req, res, next) => {
   try {
     const { name, logo } = req.body;
     await SubAdmin.update({ name, logo }, { where: { id: req.user.id } });
-    const subAdmin = await SubAdmin.findByPk(req.user.id);
+    const subAdmin = await SubAdmin.findByPk(req.user.id, { include: ["subscriptionPlan"] });
     
     if (!subAdmin) {
       return res.status(404).json({ message: "User not found" });
@@ -78,6 +89,7 @@ router.put("/profile", requireAuth(["subadmin"]), async (req, res, next) => {
       email: subAdmin.email,
       logo: subAdmin.logo || "",
       role: "subadmin",
+      subscriptionPlan: subAdmin.subscriptionPlan
     });
   } catch (error) {
     next(error);

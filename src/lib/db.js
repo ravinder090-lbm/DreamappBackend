@@ -53,6 +53,7 @@ export async function connectDB() {
 
     // Dynamically import models to resolve ESM circular dependency TDZ
     await import("../models/SuperAdmin.js");
+    await import("../models/SubscriptionPlan.js");
     await import("../models/SubAdmin.js");
     await import("../models/User.js");
     await import("../models/Category.js");
@@ -62,7 +63,7 @@ export async function connectDB() {
     await import("../models/Order.js");
     await import("../models/Task.js");
 
-    await sequelize.sync({ alter: true });
+    await sequelize.sync();
     console.log("Database tables synchronized.");
   } catch (error) {
     console.error("Unable to connect to the database:", error);
