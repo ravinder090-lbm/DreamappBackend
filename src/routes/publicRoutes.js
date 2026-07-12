@@ -7,6 +7,7 @@ import { Order } from "../models/Order.js";
 import { Banner } from "../models/Banner.js";
 import { SubAdmin } from "../models/SubAdmin.js";
 import { Category } from "../models/Category.js";
+import { Booking } from "../models/Booking.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
 import { geocodeAddress, getHaversineDistance } from "../lib/googleMaps.js";
 
@@ -539,6 +540,123 @@ router.post("/orders/:orderId/status", async (req, res, next) => {
     return next(error);
   }
 });
+router.get("/orders/:phone", async (req, res, next) => {
+  try {
+    const { phone } = req.params;
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    const orders = await Order.findAll({
+      where: { customerPhone: phone },
+      order: [["createdAt", "DESC"]]
+    });
+    return res.json(orders);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/autocomplete", async (req, res, next) => {
+  try {
+    const { input } = req.query;
+    if (!input) {
+      return res.json({ predictions: [] });
+    }
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey) {
+      console.warn("GOOGLE_PLACES_API_KEY is not configured.");
+      return res.json({ predictions: [] });
+    }
+
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+        input
+      )}&key=${apiKey}&language=en`
+    );
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/place-details", async (req, res, next) => {
+  try {
+    const { place_id } = req.query;
+    if (!place_id) {
+      return res.status(400).json({ message: "place_id is required" });
+    }
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey) {
+      console.warn("GOOGLE_PLACES_API_KEY is not configured.");
+      return res.status(500).json({ message: "Google Places API is not configured on the server." });
+    }
+
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(
+        place_id
+      )}&key=${apiKey}&language=en`
+    );
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// GET /api/public/kds/:subAdminId - Fetch active orders for a particular subadmin KDS screen
+router.get("/kds/:subAdminId", async (req, res, next) => {
+  try {
+    const { subAdminId } = req.params;
+    const subAdmin = await SubAdmin.findOne({
+      where: { id: subAdminId },
+      attributes: ["id", "name", "themeColor", "logo"]
+    });
+    if (!subAdmin) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours
+    const orders = await Order.findAll({
+      where: {
+        subAdminId,
+        status: { [Op.in]: ["pending", "preparing", "completed"] },
+        createdAt: { [Op.gte]: cutoff }
+      },
+      order: [["createdAt", "ASC"]]
+    });
+
+    return res.json({ subAdmin, orders });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// POST /api/public/orders/:orderId/status - Update order status publicly (unauthenticated KDS action)
+router.post("/orders/:orderId/status", async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+    if (!["pending", "preparing", "completed", "cancelled"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const [updatedCount] = await Order.update({ status }, { where: { id: orderId } });
+    if (updatedCount === 0) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    const order = await Order.findByPk(orderId);
+
+    if (req.io) {
+      req.io.to(order.subAdminId.toString()).emit("order_updated", order);
+    }
+
+    return res.json(order);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 // POST /api/public/call-waiter - Notify subadmin that a table needs assistance
 router.post("/call-waiter", async (req, res, next) => {
@@ -562,6 +680,61 @@ router.post("/call-waiter", async (req, res, next) => {
     }
 
     return res.json({ message: "Waiter has been notified!" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/book-table", async (req, res, next) => {
+  try {
+    const { subAdminId, customerName, customerPhone, date, time, partySize, items, specialRequests } = req.body;
+
+    if (!subAdminId || !customerName || !customerPhone || !date || !time) {
+      return res.status(400).json({ message: "Missing required booking details" });
+    }
+
+    const bookingNumber = `BK-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    let subtotal = 0;
+    if (items && Array.isArray(items)) {
+      subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    }
+
+    const total = subtotal;
+
+    const newBooking = await Booking.create({
+      bookingNumber,
+      customerName,
+      customerPhone,
+      date,
+      time,
+      partySize: parseInt(partySize, 10) || 1,
+      items: items || [],
+      subtotal,
+      total,
+      specialRequests: specialRequests || "",
+      subAdminId,
+      status: "pending"
+    });
+
+    res.json({ message: "Booking placed successfully", booking: newBooking });
+  } catch (error) {
+    console.error("Book Table Error:", error);
+    next(error);
+  }
+});
+
+router.get("/bookings/:phone", async (req, res, next) => {
+  try {
+    const { phone } = req.params;
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    const bookings = await Booking.findAll({
+      where: { customerPhone: phone },
+      order: [["createdAt", "DESC"]]
+    });
+    return res.json(bookings);
   } catch (error) {
     return next(error);
   }

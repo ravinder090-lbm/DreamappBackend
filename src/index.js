@@ -15,6 +15,7 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import whatsappRoutes from "./routes/whatsappRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import bookingRoutes from "./routes/bookingRoutes.js";
 import { whatsappManager } from "./lib/whatsappManager.js";
 import path from "path";
 import { createServer } from "http";
@@ -117,6 +118,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/webhook", webhookRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/bookings", bookingRoutes);
 
 app.use((error, req, res, next) => {
   console.error("API Error caught by middleware:", error);

@@ -61,6 +61,7 @@ export async function connectDB() {
     await import("../models/Banner.js");
     await import("../models/Table.js");
     await import("../models/Order.js");
+    await import("../models/Booking.js");
     await import("../models/Task.js");
 
     await sequelize.sync();
