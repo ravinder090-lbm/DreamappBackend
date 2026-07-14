@@ -70,7 +70,7 @@ router.get("/menu/:tableId", async (req, res, next) => {
       }
     }
 
-    const [menuItems, banners] = await Promise.all([
+    const [menuItems, banners, categories] = await Promise.all([
       MenuItem.findAll({
         where: { available: true, subAdminId: table.subAdminId },
         include: [{ model: Category, as: "category" }],
@@ -80,9 +80,13 @@ router.get("/menu/:tableId", async (req, res, next) => {
         where: { status: "active", subAdminId: table.subAdminId },
         order: [["createdAt", "DESC"]]
       }),
+      Category.findAll({
+        where: { subAdminId: table.subAdminId },
+        order: [["name", "ASC"]]
+      })
     ]);
 
-    return res.json({ table, occupierPhone, menuItems, banners });
+    return res.json({ table, occupierPhone, menuItems, banners, categories });
   } catch (error) {
     return next(error);
   }
