@@ -63,8 +63,9 @@ export async function connectDB() {
     await import("../models/Order.js");
     await import("../models/Booking.js");
     await import("../models/Task.js");
+    await import("../models/DeliveryAgent.js");
 
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     console.log("Database tables synchronized.");
   } catch (error) {
     console.error("Unable to connect to the database:", error);

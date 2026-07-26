@@ -2,6 +2,7 @@ import { DataTypes, Model } from "sequelize";
 import { sequelize } from "../lib/db.js";
 import { Table } from "./Table.js";
 import { SubAdmin } from "./SubAdmin.js";
+import { DeliveryAgent } from "./DeliveryAgent.js";
 
 export class Order extends Model {}
 
@@ -95,6 +96,14 @@ Order.init(
         model: SubAdmin,
         key: "id"
       }
+    },
+    deliveryAgentId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: DeliveryAgent,
+        key: "id"
+      }
     }
   },
   {
@@ -116,3 +125,6 @@ Table.hasMany(Order, { foreignKey: "tableId", as: "orders" });
 
 Order.belongsTo(SubAdmin, { foreignKey: "subAdminId", as: "subAdmin" });
 SubAdmin.hasMany(Order, { foreignKey: "subAdminId", as: "orders" });
+
+Order.belongsTo(DeliveryAgent, { foreignKey: "deliveryAgentId", as: "deliveryAgent" });
+DeliveryAgent.hasMany(Order, { foreignKey: "deliveryAgentId", as: "orders" });

@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import { requireAuth } from "../middleware/auth.js";
 import { Order } from "../models/Order.js";
 import { Table } from "../models/Table.js";
+import { DeliveryAgent } from "../models/DeliveryAgent.js";
 
 const router = Router();
 
@@ -11,12 +12,15 @@ router.use(requireAuth(["subadmin"]));
 router.get("/", async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 0;
+    const limit = parseInt(req.query.limit) || 15;
     const search = req.query.search || "";
 
     const options = {
       where: { subAdminId: req.user.id },
-      include: [{ model: Table, as: "table", attributes: ["name", "code"] }],
+      include: [
+        { model: Table, as: "table", attributes: ["name", "code"] },
+        { model: DeliveryAgent, as: "deliveryAgent", attributes: ["id", "name", "phone", "status", "vehicleDetails"] }
+      ],
       order: [["createdAt", "DESC"]]
     };
 
@@ -44,7 +48,10 @@ router.get("/:id", async (req, res, next) => {
   try {
     const order = await Order.findOne({
       where: { id: req.params.id, subAdminId: req.user.id },
-      include: [{ model: Table, as: "table", attributes: ["name", "code"] }]
+      include: [
+        { model: Table, as: "table", attributes: ["name", "code"] },
+        { model: DeliveryAgent, as: "deliveryAgent", attributes: ["id", "name", "phone", "status", "vehicleDetails"] }
+      ]
     });
 
     if (!order) {
@@ -62,6 +69,9 @@ router.post("/", async (req, res, next) => {
     if (req.body.table) {
       req.body.tableId = req.body.table;
     }
+    if (req.body.address && !req.body.deliveryAddress) {
+      req.body.deliveryAddress = req.body.address;
+    }
     const orderData = { ...req.body, subAdminId: req.user.id };
     if (!orderData.orderNumber) {
       orderData.orderNumber = `ORD-${Date.now().toString().slice(-6)}`;
@@ -69,7 +79,10 @@ router.post("/", async (req, res, next) => {
     const order = await Order.create(orderData);
     const populated = await Order.findOne({
       where: { id: order.id },
-      include: [{ model: Table, as: "table", attributes: ["name", "code"] }]
+      include: [
+        { model: Table, as: "table", attributes: ["name", "code"] },
+        { model: DeliveryAgent, as: "deliveryAgent", attributes: ["id", "name", "phone", "status", "vehicleDetails"] }
+      ]
     });
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("order_created", populated);
@@ -96,11 +109,17 @@ router.post("/:id", async (req, res, next) => {
 
     const order = await Order.findOne({
       where: { id: req.params.id, subAdminId: req.user.id },
-      include: [{ model: Table, as: "table", attributes: ["name", "code"] }]
+      include: [
+        { model: Table, as: "table", attributes: ["name", "code"] },
+        { model: DeliveryAgent, as: "deliveryAgent", attributes: ["id", "name", "phone", "status", "vehicleDetails"] }
+      ]
     });
 
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("order_updated", order);
+      if (order.deliveryAgentId) {
+        req.io.to(order.deliveryAgentId.toString()).emit("order_updated", order);
+      }
     }
 
     return res.json(order);

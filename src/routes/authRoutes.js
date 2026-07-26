@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { Router } from "express";
 import { SubAdmin } from "../models/SubAdmin.js";
 import { SuperAdmin } from "../models/SuperAdmin.js";
+import { DeliveryAgent } from "../models/DeliveryAgent.js";
 import { requireAuth } from "../middleware/auth.js";
 import { geocodeAddress } from "../lib/googleMaps.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
@@ -53,6 +54,35 @@ router.post("/login", async (req, res, next) => {
         role,
         ...(role === "subadmin" && { subscriptionPlan: await user.getSubscriptionPlan() })
       },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/delivery-login", async (req, res, next) => {
+  try {
+    const { phone, pin } = req.body;
+    if (!phone || !pin) {
+      return res.status(400).json({ message: "Phone and PIN are required" });
+    }
+
+    const agent = await DeliveryAgent.findOne({ where: { phone, pin } });
+    if (!agent) {
+      return res.status(401).json({ message: "Invalid phone or PIN" });
+    }
+
+    const token = createToken(agent, "delivery_agent");
+
+    return res.json({
+      token,
+      user: {
+        id: agent.id,
+        name: agent.name,
+        phone: agent.phone,
+        role: "delivery_agent",
+        subAdminId: agent.subAdminId
+      }
     });
   } catch (error) {
     return next(error);

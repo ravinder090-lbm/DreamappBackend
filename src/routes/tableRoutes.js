@@ -11,7 +11,7 @@ router.use(requireAuth(["subadmin"]));
 router.get("/", async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 0;
+    const limit = parseInt(req.query.limit) || 15;
     const search = req.query.search || "";
 
     const options = {
