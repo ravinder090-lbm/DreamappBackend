@@ -544,11 +544,51 @@ router.post("/orders/:orderId/status", async (req, res, next) => {
     return next(error);
   }
 });
-router.get("/reverse-geocode", async (req, res, next) => {
+router.get("/orders/:phone", async (req, res, next) => {
   try {
-    const { lat, lng } = req.query;
-    if (!lat || !lng) {
-      return res.status(400).json({ message: "lat and lng are required" });
+    const { phone } = req.params;
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    const orders = await Order.findAll({
+      where: { customerPhone: phone },
+      order: [["createdAt", "DESC"]]
+    });
+    return res.json(orders);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/autocomplete", async (req, res, next) => {
+  try {
+    const { input } = req.query;
+    if (!input) {
+      return res.json({ predictions: [] });
+    }
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey) {
+      console.warn("GOOGLE_PLACES_API_KEY is not configured.");
+      return res.json({ predictions: [] });
+    }
+
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+        input
+      )}&key=${apiKey}&language=en`
+    );
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/place-details", async (req, res, next) => {
+  try {
+    const { place_id } = req.query;
+    if (!place_id) {
+      return res.status(400).json({ message: "place_id is required" });
     }
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     if (!apiKey) {
@@ -557,7 +597,9 @@ router.get("/reverse-geocode", async (req, res, next) => {
     }
 
     const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`
+      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(
+        place_id
+      )}&key=${apiKey}&language=en`
     );
     const data = await response.json();
     return res.json(data);
