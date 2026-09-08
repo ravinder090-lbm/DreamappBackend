@@ -1,5 +1,5 @@
+import "dotenv/config";
 import cors from "cors";
-import dotenv from "dotenv";
 import express from "express";
 import { connectDB } from "./lib/db.js";
 import { seedSuperAdmin } from "./lib/seedSuperAdmin.js";
@@ -20,8 +20,6 @@ import bookingRoutes from "./routes/bookingRoutes.js";
 import { whatsappManager } from "./lib/whatsappManager.js";
 import path from "path";
 import { createServer } from "http";
-
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
