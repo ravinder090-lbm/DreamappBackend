@@ -5,8 +5,18 @@ import { Category } from "../models/Category.js";
 import { MenuItem } from "../models/MenuItem.js";
 import { Banner } from "../models/Banner.js";
 import { SubAdmin } from "../models/SubAdmin.js";
+import { invalidatePublicCatalogCache } from "./publicRoutes.js";
 
 const router = Router();
+
+const catalogCache = new Map();
+
+export function invalidateCatalogCache(subAdminId) {
+  if (subAdminId) {
+    catalogCache.delete(subAdminId.toString());
+    invalidatePublicCatalogCache(subAdminId);
+  }
+}
 
 router.use(requireAuth(["subadmin"]));
 
@@ -16,6 +26,16 @@ router.get("/", async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 15;
     const type = req.query.type; // 'categories', 'menu-items', or 'banners'
     const search = req.query.search || "";
+    const cacheKey = req.user.id.toString();
+
+    // Fast cache hit for full catalog query
+    if (!type && page === 1 && !search) {
+      const cached = catalogCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < 30000)) {
+        res.setHeader("X-Cache", "HIT");
+        return res.json(cached.data);
+      }
+    }
 
     if (type) {
       let items;
@@ -67,7 +87,11 @@ router.get("/", async (req, res, next) => {
       Banner.findAll({ where: { subAdminId: req.user.id }, order: [["createdAt", "DESC"]] }),
     ]);
 
-    res.json({ categories, menuItems, banners });
+    const catalogData = { categories, menuItems, banners };
+    catalogCache.set(cacheKey, { timestamp: Date.now(), data: catalogData });
+    res.setHeader("X-Cache", "MISS");
+
+    res.json(catalogData);
   } catch (error) {
     next(error);
   }
@@ -76,6 +100,7 @@ router.get("/", async (req, res, next) => {
 router.post("/categories", async (req, res, next) => {
   try {
     const category = await Category.create({ ...req.body, subAdminId: req.user.id });
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -97,6 +122,7 @@ router.post("/categories/:id", async (req, res, next) => {
 
     const category = await Category.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -136,6 +162,7 @@ router.delete("/categories/:id", async (req, res, next) => {
     await Category.destroy({ where: { id: req.params.id, subAdminId: req.user.id } });
     await MenuItem.destroy({ where: { categoryId: req.params.id, subAdminId: req.user.id } });
 
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -168,6 +195,7 @@ router.post("/menu-items", async (req, res, next) => {
       where: { id: menuItem.id },
       include: [{ model: Category, as: "category" }]
     });
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -212,6 +240,7 @@ router.post("/menu-items/:id", async (req, res, next) => {
       include: [{ model: Category, as: "category" }]
     });
 
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -231,6 +260,7 @@ router.delete("/menu-items/:id", async (req, res, next) => {
 
     await MenuItem.destroy({ where: { id: req.params.id, subAdminId: req.user.id } });
 
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -256,6 +286,7 @@ router.post("/banners", async (req, res, next) => {
     }
 
     const banner = await Banner.create({ ...req.body, subAdminId: req.user.id });
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -291,6 +322,7 @@ router.post("/banners/:id", async (req, res, next) => {
 
     const banner = await Banner.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
 
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }
@@ -310,6 +342,7 @@ router.delete("/banners/:id", async (req, res, next) => {
 
     await Banner.destroy({ where: { id: req.params.id, subAdminId: req.user.id } });
 
+    invalidateCatalogCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("catalog_updated");
     }

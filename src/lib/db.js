@@ -14,12 +14,15 @@ dns.setDefaultResultOrder("ipv4first");
 // Use the transaction-mode pooler URL (port 6543 on Supabase) if available,
 // which supports unlimited connections in transaction mode.
 // Fall back to the session-mode URL (port 5432) for local dev.
-const databaseUrl =
+const databaseUrlRaw =
   process.env.DATABASE_URL_TRANSACTION || process.env.DATABASE_URL;
 
-if (!databaseUrl) {
+if (!databaseUrlRaw) {
   throw new Error("DATABASE_URL or DATABASE_URL_TRANSACTION must be set.");
 }
+
+// Use direct Neon endpoint to avoid DNS ENOTFOUND issues and pooler cold-start latency
+const databaseUrl = databaseUrlRaw.replace("-pooler.", ".");
 
 export const sequelize = new Sequelize(databaseUrl, {
   dialect: "postgres",
@@ -29,16 +32,16 @@ export const sequelize = new Sequelize(databaseUrl, {
       require: true,
       rejectUnauthorized: false,
     },
+    keepAlive: true,
     // Disable prepared statements — required for PgBouncer transaction mode
     statement_timeout: 30000,
   },
   pool: {
-    // Keep pool very small per serverless instance to avoid exhausting connections
-    max: 2,
-    min: 0,
+    max: 10,
+    min: 2,
     acquire: 30000,
-    idle: 10000,
-    evict: 10000,
+    idle: 300000,
+    evict: 60000,
   },
   // Disable prepared statements for PgBouncer transaction mode compatibility
   query: {
@@ -65,8 +68,8 @@ export async function connectDB() {
     await import("../models/Task.js");
     await import("../models/DeliveryAgent.js");
 
-    await sequelize.sync({ alter: true });
-    console.log("Database tables synchronized.");
+    // await sequelize.sync();
+    console.log("Database connected & models ready.");
   } catch (error) {
     console.error("Unable to connect to the database:", error);
     throw error;

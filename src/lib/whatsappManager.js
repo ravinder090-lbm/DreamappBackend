@@ -65,11 +65,15 @@ class WhatsAppManager {
     }
 
     const sessionDir = path.join(SESSIONS_DIR, `subadmin_${subAdminId}`);
-    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = await import("@whiskeysockets/baileys");
+    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = await import("@whiskeysockets/baileys");
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`Using WhatsApp Web version v${version.join('.')}, isLatest: ${isLatest}`);
 
     const logger = pino({ level: "silent" });
     const sock = makeWASocket({
+      version,
       auth: state,
       logger,
       printQRInTerminal: false,
@@ -131,6 +135,7 @@ class WhatsAppManager {
       if (connection === "close") {
         const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
         console.log(`WhatsApp connection closed for subadmin ${subAdminId}. Reconnecting: ${shouldReconnect}`);
+        console.log(`Disconnect Error:`, lastDisconnect?.error);
 
         this.sockets.delete(subAdminId);
 

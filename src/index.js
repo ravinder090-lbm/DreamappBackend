@@ -132,9 +132,6 @@ app.use((error, req, res, next) => {
 connectDB()
   .then(seedSuperAdmin)
   .then(() => {
-    whatsappManager.initializeAll().catch((err) => {
-      console.error("Error restoring WhatsApp sessions:", err);
-    });
     if (httpServer) {
       httpServer.listen(port, () => {
         console.log(`Server listening on http://localhost:${port}`);
@@ -144,6 +141,9 @@ connectDB()
         console.log(`Server listening on http://localhost:${port}`);
       });
     }
+    whatsappManager.initializeAll().catch((err) => {
+      console.error("Error restoring WhatsApp sessions:", err);
+    });
   })
   .catch((error) => {
     console.error("Failed to start server:", error.message);

@@ -26,6 +26,7 @@ Order.init(
     customerName: {
       type: DataTypes.STRING,
       allowNull: false,
+      defaultValue: "Walk-in Guest",
     },
     customerPhone: {
       type: DataTypes.STRING,

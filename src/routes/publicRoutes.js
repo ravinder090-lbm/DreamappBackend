@@ -1,5 +1,8 @@
 import { Router } from "express";
 import { Op } from "sequelize";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import { MenuItem } from "../models/MenuItem.js";
 import { Table } from "../models/Table.js";
 import { User } from "../models/User.js";
@@ -10,8 +13,21 @@ import { Category } from "../models/Category.js";
 import { Booking } from "../models/Booking.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
 import { geocodeAddress, getHaversineDistance } from "../lib/googleMaps.js";
+import { invalidateOrdersCache } from "./orderRoutes.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = Router();
+
+router.get("/restaurants", async (req, res, next) => {
+  try {
+    const subAdmins = await SubAdmin.findAll({ attributes: ["id", "name", "logo", "themeColor"] });
+    return res.json(subAdmins);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get("/restaurant/:slug", async (req, res, next) => {
   try {
@@ -40,6 +56,14 @@ router.get("/restaurant/:slug", async (req, res, next) => {
     next(error);
   }
 });
+
+const publicCatalogCache = new Map();
+
+export function invalidatePublicCatalogCache(subAdminId) {
+  if (subAdminId) {
+    publicCatalogCache.delete(subAdminId.toString());
+  }
+}
 
 router.get("/menu/:tableId", async (req, res, next) => {
   try {
@@ -70,23 +94,35 @@ router.get("/menu/:tableId", async (req, res, next) => {
       }
     }
 
-    const [menuItems, banners, categories] = await Promise.all([
-      MenuItem.findAll({
-        where: { available: true, subAdminId: table.subAdminId },
-        include: [{ model: Category, as: "category" }],
-        order: [["createdAt", "DESC"]]
-      }),
-      Banner.findAll({
-        where: { status: "active", subAdminId: table.subAdminId },
-        order: [["createdAt", "DESC"]]
-      }),
-      Category.findAll({
-        where: { subAdminId: table.subAdminId },
-        order: [["name", "ASC"]]
-      })
-    ]);
+    const subAdminIdStr = table.subAdminId.toString();
+    const cachedCatalog = publicCatalogCache.get(subAdminIdStr);
 
-    return res.json({ table, occupierPhone, menuItems, banners, categories });
+    let catalogData = {};
+    if (cachedCatalog && (Date.now() - cachedCatalog.timestamp < 30000)) {
+      catalogData = cachedCatalog.data;
+      res.setHeader("X-Cache", "HIT");
+    } else {
+      const [menuItems, banners, categories] = await Promise.all([
+        MenuItem.findAll({
+          where: { available: true, subAdminId: table.subAdminId },
+          include: [{ model: Category, as: "category" }],
+          order: [["createdAt", "DESC"]]
+        }),
+        Banner.findAll({
+          where: { status: "active", subAdminId: table.subAdminId },
+          order: [["createdAt", "DESC"]]
+        }),
+        Category.findAll({
+          where: { subAdminId: table.subAdminId },
+          order: [["name", "ASC"]]
+        })
+      ]);
+      catalogData = { menuItems, banners, categories };
+      publicCatalogCache.set(subAdminIdStr, { timestamp: Date.now(), data: catalogData });
+      res.setHeader("X-Cache", "MISS");
+    }
+
+    return res.json({ table, occupierPhone, ...catalogData });
   } catch (error) {
     return next(error);
   }
@@ -273,6 +309,7 @@ router.post("/verify-otp", async (req, res, next) => {
         await table.save();
       }
       
+      invalidateOrdersCache(subAdminId);
       if (req.io) {
         req.io.to(subAdminId.toString()).emit("order_created", newOrder);
       }
@@ -742,6 +779,141 @@ router.get("/bookings/:phone", async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+});
+
+const waiterCache = new Map();
+
+export function invalidateWaiterCache(subAdminId) {
+  if (subAdminId) waiterCache.delete(subAdminId.toString());
+}
+
+// GET /api/public/waiter/:subAdminId - Fetch tables, categories, menu items for Waiter App
+router.get("/waiter/:subAdminId", async (req, res, next) => {
+  try {
+    const { subAdminId } = req.params;
+    const now = Date.now();
+    const cached = waiterCache.get(subAdminId);
+    if (cached && cached.expiresAt > now) {
+      return res.json(cached.data);
+    }
+
+    const [subAdmin, tables, categories, menuItems] = await Promise.all([
+      SubAdmin.findOne({
+        where: { id: subAdminId },
+        attributes: ["id", "name", "themeColor", "logo", "sgstPercent", "cgstPercent"]
+      }),
+      Table.findAll({
+        where: { subAdminId, status: { [Op.ne]: "inactive" } },
+        attributes: ["id", "_id", "name", "status"],
+        order: [["name", "ASC"]]
+      }),
+      Category.findAll({
+        where: { subAdminId },
+        attributes: ["id", "_id", "name"],
+        order: [["name", "ASC"]]
+      }),
+      MenuItem.findAll({
+        where: { subAdminId, available: true },
+        attributes: ["id", "_id", "name", "price", "image", "description", "categoryId"],
+        order: [["createdAt", "DESC"]]
+      })
+    ]);
+
+    if (!subAdmin) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const subAdminData = subAdmin.toJSON();
+    if (subAdminData.logo && subAdminData.logo.length > 2000) {
+      subAdminData.logo = ""; // Omit massive base64 image strings to ensure fast response times
+    }
+
+    const responseData = { subAdmin: subAdminData, tables, categories, menuItems };
+    waiterCache.set(subAdminId, { data: responseData, expiresAt: now + 30000 });
+    return res.json(responseData);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// POST /api/public/waiter/order - Place a manual order via Waiter App
+router.post("/waiter/order", async (req, res, next) => {
+  try {
+    const { subAdminId, tableId, tableName, orderType, cart, customerName, customerPhone, notes } = req.body;
+
+    if (!subAdminId || !cart || !Array.isArray(cart) || cart.length === 0) {
+      return res.status(400).json({ message: "Cart items and restaurant ID are required" });
+    }
+
+    const subAdmin = await SubAdmin.findByPk(subAdminId);
+    if (!subAdmin) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    let finalTableId = tableId || null;
+    let finalTableName = tableName || (orderType === "Dine In" ? "Dine In" : orderType || "Take Away");
+
+    if (tableId) {
+      const tableObj = await Table.findByPk(tableId);
+      if (tableObj) {
+        finalTableName = tableObj.name;
+        if (orderType === "Dine In") {
+          await Table.update({ status: "occupied" }, { where: { id: tableId } });
+        }
+      }
+    }
+
+    const subtotal = cart.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+    const sgstAmount = (subtotal * (subAdmin.sgstPercent || 0)) / 100;
+    const cgstAmount = (subtotal * (subAdmin.cgstPercent || 0)) / 100;
+    const total = subtotal + sgstAmount + cgstAmount;
+
+    const orderNumber = `ORD-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    const newOrder = await Order.create({
+      orderNumber,
+      customerName: customerName || "Walk-in Guest",
+      customerPhone: customerPhone || "",
+      status: "preparing",
+      orderType: orderType || "Dine In",
+      items: cart.map(i => ({
+        _id: i._id || i.id,
+        name: i.name,
+        quantity: Number(i.quantity),
+        price: Number(i.price),
+        instructions: i.instructions || ""
+      })),
+      subtotal,
+      total,
+      tableId: finalTableId,
+      tableName: finalTableName,
+      subAdminId,
+      notes: notes || "Placed by Waiter POS"
+    });
+
+    invalidateWaiterCache(subAdminId);
+    invalidateOrdersCache(subAdminId);
+
+    if (req.io) {
+      req.io.to(subAdminId.toString()).emit("order_created", newOrder);
+      req.io.to(subAdminId.toString()).emit("catalog_updated");
+    }
+
+    return res.json({ message: "Order placed successfully!", order: newOrder });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// GET /api/public/download/waiter-apk - Serve Android APK directly for Waiter App
+router.get("/download/waiter-apk", (req, res) => {
+  const apkPath = path.resolve(__dirname, "../../uploads/waiter-pos.apk");
+  if (fs.existsSync(apkPath)) {
+    res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    res.setHeader("Content-Disposition", 'attachment; filename="WaiterPOS-App.apk"');
+    return res.sendFile(apkPath);
+  }
+  return res.status(404).json({ message: "Waiter APK file is currently being generated. Please use the QR code." });
 });
 
 export default router;
