@@ -306,6 +306,7 @@ router.post("/verify-otp", async (req, res, next) => {
       if (req.io) {
         req.io.to(subAdminId.toString()).emit("order_created", newOrder);
       }
+      whatsappManager.sendOrderInvoice(subAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
     }
 
     return res.json({ message: "OTP verified successfully", user, order: newOrder });

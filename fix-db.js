@@ -1,31 +1,18 @@
-import { Sequelize } from "sequelize";
-import dotenv from "dotenv";
-
-dotenv.config();
-
-const databaseUrl = process.env.DATABASE_URL_TRANSACTION || process.env.DATABASE_URL;
-
-const sequelize = new Sequelize(databaseUrl, {
-  dialect: "postgres",
-  logging: false,
-  dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false,
-    },
-  },
-});
+import { sequelize } from "./src/lib/db.js";
+import { MenuItem } from "./src/models/MenuItem.js"; // just to ensure it's loaded
 
 async function fix() {
   try {
-    await sequelize.authenticate();
-    console.log("Connected to DB.");
-    await sequelize.query('ALTER TABLE "SubAdmins" ADD COLUMN IF NOT EXISTS "publicMenuTheme" VARCHAR(255) DEFAULT \'default\';');
-    console.log("Column 'publicMenuTheme' added successfully!");
-    process.exit(0);
+    await sequelize.query('ALTER TABLE "MenuItems" ADD COLUMN "foodType" VARCHAR(255) DEFAULT \'veg\';');
+    console.log("Column added successfully!");
   } catch (error) {
-    console.error("Error adding column:", error);
-    process.exit(1);
+    if (error.message.includes('already exists')) {
+      console.log("Column already exists.");
+    } else {
+      console.error(error);
+    }
+  } finally {
+    process.exit(0);
   }
 }
 

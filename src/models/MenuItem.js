@@ -42,6 +42,10 @@ MenuItem.init(
       type: DataTypes.TEXT,
       defaultValue: "",
     },
+    foodType: {
+      type: DataTypes.STRING,
+      defaultValue: "veg",
+    },
     available: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

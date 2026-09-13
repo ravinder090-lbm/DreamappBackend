@@ -119,10 +119,14 @@ class WhatsAppManager {
           whatsAppNumber = whatsAppNumber.split("@")[0];
         }
 
-        await SubAdmin.update({
-          whatsAppConnected: true,
-          whatsAppNumber: whatsAppNumber,
-        }, { where: { id: subAdminId } });
+        try {
+          await SubAdmin.update({
+            whatsAppConnected: true,
+            whatsAppNumber: whatsAppNumber,
+          }, { where: { id: subAdminId } });
+        } catch (dbErr) {
+          console.error(`Database error during whatsapp connect for subadmin ${subAdminId}:`, dbErr.message);
+        }
 
         if (this.io) {
           this.io.to(subAdminId).emit("whatsapp_status", {
@@ -150,10 +154,14 @@ class WhatsAppManager {
           // Logged out
           console.log(`Subadmin ${subAdminId} logged out of WhatsApp Web.`);
           this.qrCodes.delete(subAdminId);
-          await SubAdmin.update({
-            whatsAppConnected: false,
-            whatsAppNumber: "",
-          }, { where: { id: subAdminId } });
+          try {
+            await SubAdmin.update({
+              whatsAppConnected: false,
+              whatsAppNumber: "",
+            }, { where: { id: subAdminId } });
+          } catch (dbErr) {
+            console.error(`Database error during whatsapp disconnect for subadmin ${subAdminId}:`, dbErr.message);
+          }
 
           // Clean up session files
           try {
@@ -187,10 +195,14 @@ class WhatsAppManager {
     }
 
     this.qrCodes.delete(subAdminId);
-    await SubAdmin.update({
-      whatsAppConnected: false,
-      whatsAppNumber: "",
-    }, { where: { id: subAdminId } });
+    try {
+      await SubAdmin.update({
+        whatsAppConnected: false,
+        whatsAppNumber: "",
+      }, { where: { id: subAdminId } });
+    } catch (dbErr) {
+      console.error(`Database error during whatsapp disconnectSession for subadmin ${subAdminId}:`, dbErr.message);
+    }
 
     const sessionDir = path.join(SESSIONS_DIR, `subadmin_${subAdminId}`);
     try {
