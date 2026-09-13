@@ -82,7 +82,7 @@ SubAdmin.init(
       defaultValue: "#1d6f56",
     },
     publicMenuTheme: {
-      type: DataTypes.STRING,
+      type: DataTypes.ENUM('default', 'lapinoz', 'modern', 'dark', 'list', 'elegant', 'custom', 'food-app'),
       defaultValue: "default",
     },
     waiterTone: {
