@@ -4,6 +4,8 @@ import { requireAuth } from "../middleware/auth.js";
 import { Order } from "../models/Order.js";
 import { Table } from "../models/Table.js";
 import { DeliveryAgent } from "../models/DeliveryAgent.js";
+import { SubAdmin } from "../models/SubAdmin.js";
+import { whatsappManager } from "../lib/whatsappManager.js";
 
 const router = Router();
 
@@ -135,6 +137,12 @@ router.post("/", async (req, res, next) => {
     invalidateOrdersCache(req.user.id);
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("order_created", populated);
+    }
+    if (populated.customerPhone) {
+      const subAdmin = await SubAdmin.findByPk(req.user.id);
+      if (subAdmin && subAdmin.whatsAppConnected) {
+        whatsappManager.sendOrderInvoice(req.user.id.toString(), populated.customerPhone, populated, subAdmin.name || "Store").catch(err => console.error(err));
+      }
     }
     res.status(201).json(populated);
   } catch (error) {

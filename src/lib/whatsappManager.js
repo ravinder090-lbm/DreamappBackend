@@ -207,7 +207,7 @@ class WhatsAppManager {
   }
 
   async sendOTP(subAdminId, phone, otp) {
-    const sock = this.sockets.get(subAdminId);
+    const sock = this.sockets.get(subAdminId.toString());
     if (!sock) {
       throw new Error("WhatsApp is not connected for this store.");
     }
@@ -219,12 +219,18 @@ class WhatsAppManager {
     const jid = `${cleaned}@s.whatsapp.net`;
 
     const message = `Your verification code is: *${otp}*. Please do not share this OTP with anyone.`;
-    await sock.sendMessage(jid, { text: message });
+    
+    // Add a 5 second timeout so the backend request doesn't hang if Baileys is stuck
+    await Promise.race([
+      sock.sendMessage(jid, { text: message }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("WhatsApp send timeout")), 5000))
+    ]);
+    
     console.log(`WhatsApp OTP sent to ${cleaned} via subadmin ${subAdminId}`);
   }
 
   async sendCustomMessage(subAdminId, phone, text) {
-    const sock = this.sockets.get(subAdminId);
+    const sock = this.sockets.get(subAdminId.toString());
     if (!sock) {
       throw new Error("WhatsApp is not connected for this store.");
     }
@@ -235,8 +241,50 @@ class WhatsAppManager {
     }
     const jid = `${cleaned}@s.whatsapp.net`;
 
-    await sock.sendMessage(jid, { text });
+    await Promise.race([
+      sock.sendMessage(jid, { text }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("WhatsApp send timeout")), 5000))
+    ]);
+    
     console.log(`WhatsApp custom message sent to ${cleaned} via subadmin ${subAdminId}`);
+  }
+
+  async sendOrderInvoice(subAdminId, phone, order, storeName) {
+    const sock = this.sockets.get(subAdminId.toString());
+    if (!sock || !phone) return;
+
+    let cleaned = phone.replace(/\D/g, "");
+    if (cleaned.length === 10) cleaned = "91" + cleaned;
+    if (cleaned.length < 10) return; // Invalid phone
+    const jid = `${cleaned}@s.whatsapp.net`;
+
+    let itemsText = (order.items || []).map(item => `${item.quantity}x ${item.name} - ₹${item.price * item.quantity}`).join("\n");
+    
+    const message = `🧾 *Order Confirmation*
+Store: ${storeName}
+Order #: ${order.orderNumber}
+Type: ${order.orderType || "Dine In"}
+Status: *${(order.status || "preparing").toUpperCase()}*
+
+*Items:*
+${itemsText}
+
+Subtotal: ₹${order.subtotal}
+SGST: ₹${order.sgstAmount}
+CGST: ₹${order.cgstAmount}
+${order.deliveryCharges > 0 ? `Delivery: ₹${order.deliveryCharges}\n` : ''}*Total: ₹${order.total}*
+
+Thank you for your order!`;
+
+    try {
+      await Promise.race([
+        sock.sendMessage(jid, { text: message }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("WhatsApp send timeout")), 5000))
+      ]);
+      console.log(`WhatsApp invoice sent to ${cleaned} via subadmin ${subAdminId}`);
+    } catch (err) {
+      console.error(`Failed to send WhatsApp invoice to ${cleaned}:`, err.message);
+    }
   }
 
   getStatus(subAdminId) {

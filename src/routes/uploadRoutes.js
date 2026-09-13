@@ -32,6 +32,9 @@ router.get("/file/*", async (req, res, next) => {
     }
   } catch (error) {
     console.error("Error streaming B2 file:", error.message);
+    if (error.message.includes("credentials missing")) {
+      return res.status(500).json({ message: "Server misconfiguration: Backblaze B2 credentials missing in environment variables." });
+    }
     res.status(404).json({ message: "File not found" });
   }
 });

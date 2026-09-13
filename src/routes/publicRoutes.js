@@ -104,7 +104,7 @@ router.get("/menu/:tableId", async (req, res, next) => {
     } else {
       const [menuItems, banners, categories] = await Promise.all([
         MenuItem.findAll({
-          where: { available: true, subAdminId: table.subAdminId },
+          where: { subAdminId: table.subAdminId },
           include: [{ model: Category, as: "category" }],
           order: [["createdAt", "DESC"]]
         }),
@@ -146,6 +146,9 @@ router.post("/send-otp", async (req, res, next) => {
       const table = await Table.findByPk(tableId);
       if (table && table.subAdminId) {
         const subAdmin = await SubAdmin.findByPk(table.subAdminId);
+        if (!subAdmin || !subAdmin.whatsAppConnected) {
+          return res.status(400).json({ message: "Something went wrong. This restaurant is currently not accepting online orders." });
+        }
         if (subAdmin && subAdmin.whatsAppConnected) {
           try {
             await whatsappManager.sendOTP(subAdmin.id.toString(), phone, otp);
@@ -191,19 +194,6 @@ router.post("/verify-otp", async (req, res, next) => {
       table = await Table.findByPk(tableId);
       if (table) {
         subAdminId = table.subAdminId;
-        if (orderType === "Dine In" && table.status === "occupied") {
-          const activeOrder = await Order.findOne({
-            where: {
-              tableId: table.id,
-              status: { [Op.in]: ["pending", "preparing"] }
-            },
-            order: [["createdAt", "DESC"]]
-          });
-
-          if (activeOrder && activeOrder.customerPhone !== phone) {
-            return res.status(400).json({ message: "Table is already occupied by another customer. If this is a mistake, please contact restaurant staff." });
-          }
-        }
       }
     }
 
@@ -214,6 +204,9 @@ router.post("/verify-otp", async (req, res, next) => {
     const subAdmin = await SubAdmin.findByPk(subAdminId);
     if (!subAdmin) {
       return res.status(400).json({ message: "Store not found" });
+    }
+    if (!subAdmin.whatsAppConnected) {
+      return res.status(400).json({ message: "Something went wrong. This restaurant is currently not accepting online orders." });
     }
 
     if (orderType === "Home Delivery") {
@@ -335,19 +328,6 @@ router.post("/place-order", async (req, res, next) => {
       table = await Table.findByPk(tableId);
       if (table) {
         subAdminId = table.subAdminId;
-        if (orderType === "Dine In" && table.status === "occupied") {
-          const activeOrder = await Order.findOne({
-            where: {
-              tableId: table.id,
-              status: { [Op.in]: ["pending", "preparing"] }
-            },
-            order: [["createdAt", "DESC"]]
-          });
-
-          if (activeOrder && activeOrder.customerPhone !== phone) {
-            return res.status(400).json({ message: "Table is already occupied by another customer. If this is a mistake, please contact restaurant staff." });
-          }
-        }
       }
     }
 
@@ -358,6 +338,9 @@ router.post("/place-order", async (req, res, next) => {
     const subAdmin = await SubAdmin.findByPk(subAdminId);
     if (!subAdmin) {
       return res.status(400).json({ message: "Store not found" });
+    }
+    if (!subAdmin.whatsAppConnected) {
+      return res.status(400).json({ message: "Something went wrong. This restaurant is currently not accepting online orders." });
     }
 
     if (orderType === "Home Delivery") {
@@ -453,8 +436,11 @@ router.post("/place-order", async (req, res, next) => {
         await table.save();
       }
 
-      if (req.io) {
-        req.io.to(subAdminId.toString()).emit("order_created", newOrder);
+      if (newOrder) {
+        if (req.io) {
+          req.io.to(subAdminId.toString()).emit("order_created", newOrder);
+        }
+        whatsappManager.sendOrderInvoice(subAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
       }
     }
 

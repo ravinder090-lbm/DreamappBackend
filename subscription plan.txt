@@ -1,0 +1,73 @@
+
+
+
+Subscription Feature Toggles Implementation
+This plan outlines the steps to add feature-level controls and limits to Subscription Plans created by the Super Admin, and enforce these limits across the SubAdmin dashboard and public menus.
+
+User Review Required
+IMPORTANT
+
+Please review this updated plan. I have included your requests for Menu Limits, Category Limits, and restricting which Public Menu Themes the SubAdmin can use. Once you approve, I will begin execution.
+
+Proposed Changes
+Database Models
+[MODIFY] 
+SubscriptionPlan.js
+Add boolean fields to toggle features for subscribers:
+allowCOD (Cash on Delivery)
+allowDineIn
+allowTakeAway
+allowDelivery
+allowWaiterApp
+allowRiderAccess (Delivery Agents)
+Add limits:
+categoryLimit (integer, null for unlimited)
+(menuLimit already exists but will be enforced)
+Add Menu Theme restrictions:
+allowDefaultMenu
+allowModernMenu
+allowLapinozMenu
+Backend API Updates
+[MODIFY] [server/src/routes/subscriptionRoutes.js] (or adminRoutes.js)
+Update the POST and PUT endpoints for /subscriptions to accept the new boolean fields and category limits and save them to the database.
+[MODIFY] [server/src/routes/menuRoutes.js] & [server/src/routes/categoryRoutes.js]
+Before creating a new Category, check if the SubAdmin has exceeded their categoryLimit from their subscription plan.
+Before creating a new Menu Item, check if the SubAdmin has exceeded their menuLimit from their subscription plan.
+[MODIFY] 
+server/src/routes/publicRoutes.js
+Ensure the SubscriptionPlan data is included when fetching SubAdmin data for the public QR menu.
+Enforce validations: if the subscription doesn't allow Dine-In, block Dine-In orders via the API regardless of the SubAdmin's own settings.
+Super Admin Dashboard
+[MODIFY] 
+SuperAdminDashboard.jsx
+Update the Subscription Plan form to include:
+Category Limit input field
+Checkboxes for all features (COD, Dine In, Take Away, Delivery, Waiter App, Rider Access)
+Checkboxes for Menu Themes (Default Menu, Modern Menu, Lapinoz Menu)
+Show these features in the list view of plans.
+SubAdmin Dashboard
+[MODIFY] 
+DashboardShell.jsx
+Retrieve the SubAdmin's subscription plan from their config context.
+Hide the Waiter App and Delivery Agents sidebar menu items if their subscription does not allow them.
+[MODIFY] 
+ConfigPage.jsx
+In the settings where SubAdmins toggle Dine In, Take Away, and COD, check if the Subscription Plan allows these features. If not allowed, disable the toggle and show an "Upgrade Plan" badge.
+In the Public Menu Theme selector, only display the themes that are allowed by the SubAdmin's subscription plan (e.g. if Lapinoz is unchecked in the plan, it won't appear as an option for the SubAdmin).
+[MODIFY] [CategoriesPage.jsx] & [MenuItemsPage.jsx]
+In the frontend, if the user has reached their category or menu limit, disable the "Add" button and display a message indicating they have reached their plan limit.
+Public UI
+[MODIFY] 
+PublicMenuPage.jsx
+ and other menu pages
+Update the order type selectors (Dine In, Take Away, Delivery) to respect the overarching Subscription Plan restrictions, not just the SubAdmin's local toggles.
+Verification Plan
+Manual Verification
+Log in as Super Admin and create a new Subscription Plan with only "Take Away" enabled, 5 Categories allowed, 10 Menu items allowed, and only "Modern Menu" allowed.
+Assign this plan to a test SubAdmin.
+Log in as the SubAdmin.
+Verify Waiter App and Delivery Agents are hidden from the sidebar.
+Verify Dine In and Delivery are locked in Config.
+Verify only the "Modern Menu" theme is available to select.
+Try adding 6 categories and verify it prevents adding the 6th.
+Open the Public QR Menu for the test SubAdmin. Verify that only "Take Away" can be selected as an order type
