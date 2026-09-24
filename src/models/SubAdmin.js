@@ -93,6 +93,10 @@ SubAdmin.init(
       type: DataTypes.TEXT,
       defaultValue: "default",
     },
+    waiterPin: {
+      type: DataTypes.STRING,
+      defaultValue: "",
+    },
     enableDineIn: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

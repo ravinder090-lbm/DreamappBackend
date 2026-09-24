@@ -180,6 +180,7 @@ router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
       enableCOD: subAdmin.enableCOD !== false,
       autoAcceptOrders: subAdmin.autoAcceptOrders !== false,
       publicMenuTheme: subAdmin.publicMenuTheme || "default",
+      waiterPin: subAdmin.waiterPin || "",
       waiterTone: subAdmin.waiterTone || "default",
       orderTone: subAdmin.orderTone || "default",
       sgstPercent: subAdmin.sgstPercent || 0,
@@ -193,7 +194,7 @@ router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
 
 router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
   try {
-    const { address, deliveryRadius, lat, lng, themeColor, publicMenuTheme, waiterTone, orderTone, logo, enableDineIn, enableTakeAway, enableDelivery, enableCOD, autoAcceptOrders, sgstPercent, cgstPercent, deliveryCharges } = req.body;
+    const { address, deliveryRadius, lat, lng, themeColor, publicMenuTheme, waiterPin, waiterTone, orderTone, logo, enableDineIn, enableTakeAway, enableDelivery, enableCOD, autoAcceptOrders, sgstPercent, cgstPercent, deliveryCharges } = req.body;
 
     const updateData = {};
     if (address !== undefined) updateData.address = address;
@@ -202,6 +203,7 @@ router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
     if (lng !== undefined) updateData.lng = Number(lng) || 0;
     if (themeColor !== undefined) updateData.themeColor = themeColor;
     if (publicMenuTheme !== undefined) updateData.publicMenuTheme = publicMenuTheme;
+    if (waiterPin !== undefined) updateData.waiterPin = waiterPin;
     if (waiterTone !== undefined) updateData.waiterTone = waiterTone;
     if (orderTone !== undefined) updateData.orderTone = orderTone;
     if (logo !== undefined) updateData.logo = logo;
@@ -242,6 +244,7 @@ router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
         enableCOD: subAdmin.enableCOD !== false,
         autoAcceptOrders: subAdmin.autoAcceptOrders !== false,
         publicMenuTheme: subAdmin.publicMenuTheme || "default",
+        waiterPin: subAdmin.waiterPin || "",
         waiterTone: subAdmin.waiterTone || "default",
         orderTone: subAdmin.orderTone || "default",
         sgstPercent: subAdmin.sgstPercent || 0,

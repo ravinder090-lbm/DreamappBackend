@@ -787,7 +787,7 @@ router.get("/waiter/:subAdminId", async (req, res, next) => {
     const [subAdmin, tables, categories, menuItems] = await Promise.all([
       SubAdmin.findOne({
         where: { id: subAdminId },
-        attributes: ["id", "name", "themeColor", "logo", "sgstPercent", "cgstPercent"]
+        attributes: ["id", "name", "themeColor", "logo", "sgstPercent", "cgstPercent", "waiterPin"]
       }),
       Table.findAll({
         where: { subAdminId, status: { [Op.ne]: "inactive" } },
@@ -811,6 +811,8 @@ router.get("/waiter/:subAdminId", async (req, res, next) => {
     }
 
     const subAdminData = subAdmin.toJSON();
+    subAdminData.hasWaiterPin = !!subAdminData.waiterPin;
+    delete subAdminData.waiterPin; // Don't send the actual PIN to the public API
     if (subAdminData.logo && subAdminData.logo.length > 2000) {
       subAdminData.logo = ""; // Omit massive base64 image strings to ensure fast response times
     }
@@ -818,6 +820,26 @@ router.get("/waiter/:subAdminId", async (req, res, next) => {
     const responseData = { subAdmin: subAdminData, tables, categories, menuItems };
     waiterCache.set(subAdminId, { data: responseData, expiresAt: now + 30000 });
     return res.json(responseData);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// POST /api/public/verify-waiter-pin - Verify Waiter POS PIN
+router.post("/verify-waiter-pin", async (req, res, next) => {
+  try {
+    const { subAdminId, pin } = req.body;
+    if (!subAdminId || !pin) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+    const subAdmin = await SubAdmin.findOne({ where: { id: subAdminId } });
+    if (!subAdmin) {
+      return res.status(404).json({ success: false, message: "Restaurant not found" });
+    }
+    if (subAdmin.waiterPin && subAdmin.waiterPin === pin) {
+      return res.json({ success: true });
+    }
+    return res.status(400).json({ success: false, message: "Incorrect PIN" });
   } catch (error) {
     return next(error);
   }
@@ -856,6 +878,19 @@ router.post("/waiter/order", async (req, res, next) => {
     const total = subtotal + sgstAmount + cgstAmount;
 
     const orderNumber = `ORD-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    if (customerPhone) {
+      const existingUser = await User.findOne({ where: { subAdminId, phone: customerPhone } });
+      if (!existingUser) {
+        await User.create({
+          subAdminId,
+          name: customerName || "Guest",
+          phone: customerPhone,
+          email: `${customerPhone}@guest.local`,
+          status: "active"
+        });
+      }
+    }
 
     const newOrder = await Order.create({
       orderNumber,
@@ -901,6 +936,55 @@ router.get("/download/waiter-apk", (req, res) => {
     return res.sendFile(apkPath);
   }
   return res.status(404).json({ message: "Waiter APK file is currently being generated. Please use the QR code." });
+});
+
+// GET /api/public/waiter/:subAdminId/orders - Get active orders for Waiter App
+router.get("/waiter/:subAdminId/orders", async (req, res, next) => {
+  try {
+    const { subAdminId } = req.params;
+    
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const orders = await Order.findAll({
+      where: {
+        subAdminId,
+        createdAt: { [Op.gte]: oneDayAgo },
+        status: { [Op.in]: ["pending", "accepted", "preparing", "ready", "served"] }
+      },
+      order: [["createdAt", "DESC"]]
+    });
+
+    return res.json(orders);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// GET /api/public/waiter/:subAdminId/users - Search users by phone or name for Waiter App
+router.get("/waiter/:subAdminId/users", async (req, res, next) => {
+  try {
+    const { subAdminId } = req.params;
+    const { search } = req.query;
+    
+    if (!search || search.length < 3) {
+      return res.json([]);
+    }
+    
+    const users = await User.findAll({
+      where: {
+        subAdminId,
+        [Op.or]: [
+          { phone: { [Op.like]: `%${search}%` } },
+          { name: { [Op.iLike]: `%${search}%` } }
+        ]
+      },
+      attributes: ["id", "_id", "name", "phone"],
+      limit: 10
+    });
+
+    return res.json(users);
+  } catch (error) {
+    return next(error);
+  }
 });
 
 export default router;
