@@ -1,5 +1,5 @@
 import { DataTypes, Model } from "sequelize";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import { sequelize } from "../lib/db.js";
 
 export class SuperAdmin extends Model {
@@ -48,7 +48,7 @@ SuperAdmin.init(
     hooks: {
       beforeSave: async (superadmin) => {
         if (superadmin.changed("password")) {
-          superadmin.password = await bcrypt.hash(superadmin.password, 12);
+          superadmin.password = await bcrypt.hash(superadmin.password, 10);
         }
       },
     },
