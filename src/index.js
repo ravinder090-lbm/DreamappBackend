@@ -133,11 +133,11 @@ connectDB()
   .then(seedSuperAdmin)
   .then(() => {
     if (httpServer) {
-      httpServer.listen(port, () => {
+      httpServer.listen(port, "0.0.0.0", () => {
         console.log(`Server listening on http://localhost:${port}`);
       });
     } else {
-      app.listen(port, () => {
+      app.listen(port, "0.0.0.0", () => {
         console.log(`Server listening on http://localhost:${port}`);
       });
     }

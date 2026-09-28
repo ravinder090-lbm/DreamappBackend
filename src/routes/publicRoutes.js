@@ -832,11 +832,11 @@ router.post("/verify-waiter-pin", async (req, res, next) => {
     if (!subAdminId || !pin) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
     }
-    const subAdmin = await SubAdmin.findOne({ where: { id: subAdminId } });
+    const subAdmin = await SubAdmin.findByPk(subAdminId).catch(() => null);
     if (!subAdmin) {
-      return res.status(404).json({ success: false, message: "Restaurant not found" });
+      return res.status(400).json({ success: false, message: "Restaurant not found" });
     }
-    if (subAdmin.waiterPin && subAdmin.waiterPin === pin) {
+    if (subAdmin.waiterPin && String(subAdmin.waiterPin) === String(pin)) {
       return res.json({ success: true });
     }
     return res.status(400).json({ success: false, message: "Incorrect PIN" });
