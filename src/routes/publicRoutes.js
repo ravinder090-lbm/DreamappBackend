@@ -190,7 +190,7 @@ const otpStore = new Map();
 
 router.post("/send-otp", async (req, res, next) => {
   try {
-    const { phone, tableId } = req.body;
+    const { phone, tableId, subAdminId } = req.body;
     if (!phone) {
       return res.status(400).json({ message: "Phone number is required" });
     }
@@ -199,13 +199,18 @@ router.post("/send-otp", async (req, res, next) => {
     otpStore.set(phone, otp);
 
     let sentViaWhatsapp = false;
+    let restaurantId = subAdminId;
+    
     if (tableId) {
       const table = await Table.findByPk(tableId);
-      if (table && table.subAdminId) {
-        const subAdmin = await SubAdmin.findByPk(table.subAdminId);
-        if (!subAdmin || !subAdmin.whatsAppConnected) {
-          return res.status(400).json({ message: "Something went wrong. This restaurant is currently not accepting online orders." });
-        }
+      if (table) restaurantId = table.subAdminId;
+    }
+
+    if (restaurantId) {
+      const subAdmin = await SubAdmin.findByPk(restaurantId);
+      if (!subAdmin || !subAdmin.whatsAppConnected) {
+        return res.status(400).json({ message: "Something went wrong. This restaurant is currently not accepting online orders." });
+      }
         if (subAdmin && subAdmin.whatsAppConnected) {
           try {
             await whatsappManager.sendOTP(subAdmin.id.toString(), phone, otp);
@@ -214,7 +219,6 @@ router.post("/send-otp", async (req, res, next) => {
             console.error(`Failed to send WhatsApp OTP via subadmin ${subAdmin.id}:`, err);
           }
         }
-      }
     }
 
     if (!sentViaWhatsapp) {
@@ -232,7 +236,7 @@ router.post("/send-otp", async (req, res, next) => {
 
 router.post("/verify-otp", async (req, res, next) => {
   try {
-    const { phone, otp, tableId, cart, orderType = "Dine In", address, custCoords, paymentMethod = "COD" } = req.body;
+    const { phone, otp, tableId, subAdminId, cart, orderType = "Dine In", address, custCoords, paymentMethod = "COD" } = req.body;
 
     if (!phone || !otp) {
       return res.status(400).json({ message: "Phone and OTP are required" });
@@ -245,20 +249,20 @@ router.post("/verify-otp", async (req, res, next) => {
 
     otpStore.delete(phone);
 
-    let subAdminId = null;
+    let finalSubAdminId = subAdminId || null;
     let table = null;
     if (tableId) {
       table = await Table.findByPk(tableId);
       if (table) {
-        subAdminId = table.subAdminId;
+        finalSubAdminId = table.subAdminId;
       }
     }
 
-    if (!subAdminId) {
-      return res.status(400).json({ message: "Invalid table ID" });
+    if (!finalSubAdminId) {
+      return res.status(400).json({ message: "Invalid table or restaurant ID" });
     }
 
-    const subAdmin = await SubAdmin.findByPk(subAdminId);
+    const subAdmin = await SubAdmin.findByPk(finalSubAdminId);
     if (!subAdmin) {
       return res.status(400).json({ message: "Store not found" });
     }
@@ -374,23 +378,23 @@ router.post("/verify-otp", async (req, res, next) => {
 
 router.post("/place-order", async (req, res, next) => {
   try {
-    const { phone, tableId, cart, orderType = "Dine In", address, custCoords, paymentMethod = "COD" } = req.body;
+    const { phone, tableId, subAdminId, cart, orderType = "Dine In", address, custCoords, paymentMethod = "COD" } = req.body;
 
     if (!phone) {
       return res.status(400).json({ message: "Phone is required" });
     }
 
-    let subAdminId = null;
+    let finalSubAdminId = subAdminId || null;
     let table = null;
     if (tableId) {
       table = await Table.findByPk(tableId);
       if (table) {
-        subAdminId = table.subAdminId;
+        finalSubAdminId = table.subAdminId;
       }
     }
 
-    if (!subAdminId) {
-      return res.status(400).json({ message: "Invalid table ID" });
+    if (!finalSubAdminId) {
+      return res.status(400).json({ message: "Invalid table or restaurant ID" });
     }
 
     const subAdmin = await SubAdmin.findByPk(subAdminId);
