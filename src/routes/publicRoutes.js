@@ -67,6 +67,11 @@ export function invalidatePublicCatalogCache(subAdminId) {
 
 router.get("/menu/:tableId", async (req, res, next) => {
   try {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(req.params.tableId)) {
+      return res.status(400).json({ message: "Invalid table ID format" });
+    }
+
     const table = await Table.findOne({
       where: { id: req.params.tableId },
       include: [{
