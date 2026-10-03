@@ -128,6 +128,58 @@ router.get("/menu/:tableId", async (req, res, next) => {
   }
 });
 
+router.get("/menu-by-slug/:slug", async (req, res, next) => {
+  try {
+    const slug = req.params.slug;
+    const subAdmins = await SubAdmin.findAll({ attributes: ["id", "name", "address", "deliveryRadius", "lat", "lng", "themeColor", "publicMenuTheme", "logo", "enableDineIn", "enableTakeAway", "enableDelivery", "enableCOD", "sgstPercent", "cgstPercent", "deliveryCharges"] });
+    
+    const subAdmin = subAdmins.find(sa => {
+      const saSlug = (sa.name || "store").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      return saSlug === slug;
+    });
+
+    if (!subAdmin) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const subAdminIdStr = subAdmin.id.toString();
+    const cachedCatalog = publicCatalogCache.get(subAdminIdStr);
+
+    let catalogData = {};
+    if (cachedCatalog && (Date.now() - cachedCatalog.timestamp < 30000)) {
+      catalogData = cachedCatalog.data;
+      res.setHeader("X-Cache", "HIT");
+    } else {
+      const [menuItems, banners, categories] = await Promise.all([
+        MenuItem.findAll({
+          where: { subAdminId: subAdmin.id },
+          include: [{ model: Category, as: "category" }],
+          order: [["createdAt", "DESC"]]
+        }),
+        Banner.findAll({
+          where: { status: "active", subAdminId: subAdmin.id },
+          order: [["createdAt", "DESC"]]
+        }),
+        Category.findAll({
+          where: { subAdminId: subAdmin.id },
+          order: [["name", "ASC"]]
+        })
+      ]);
+      catalogData = { menuItems, banners, categories };
+      publicCatalogCache.set(subAdminIdStr, { timestamp: Date.now(), data: catalogData });
+      res.setHeader("X-Cache", "MISS");
+    }
+
+    return res.json({ 
+      table: { subAdmin }, 
+      occupierPhone: "", 
+      ...catalogData 
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // In-memory store for OTPs (phone -> otp)
 const otpStore = new Map();
 
