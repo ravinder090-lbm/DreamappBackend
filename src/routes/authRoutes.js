@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { Router } from "express";
 import { SubAdmin } from "../models/SubAdmin.js";
 import { SuperAdmin } from "../models/SuperAdmin.js";
+import { SubscriptionPlan } from "../models/SubscriptionPlan.js";
 import { DeliveryAgent } from "../models/DeliveryAgent.js";
 import { requireAuth } from "../middleware/auth.js";
 import { geocodeAddress } from "../lib/googleMaps.js";
@@ -77,7 +78,9 @@ router.post("/signup/send-otp", async (req, res, next) => {
     }
 
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
       auth: {
         user: admin.smtpEmail,
         pass: admin.smtpPassword
@@ -87,14 +90,18 @@ router.post("/signup/send-otp", async (req, res, next) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     otpCache.set(email, { otp, expires: Date.now() + 10 * 60 * 1000 });
 
-    await transporter.sendMail({
-      from: admin.smtpEmail,
-      to: email,
-      subject: "DreamApp POS - Signup OTP",
-      text: `Your OTP for signup is: ${otp}. It will expire in 10 minutes.`
-    });
-
-    res.json({ message: "OTP sent successfully" });
+    try {
+      await transporter.sendMail({
+        from: admin.smtpEmail,
+        to: email,
+        subject: "DreamApp POS - Signup OTP",
+        text: `Your OTP for signup is: ${otp}. It will expire in 10 minutes.`
+      });
+      res.json({ message: "OTP sent successfully" });
+    } catch (mailError) {
+      console.error("SMTP Error:", mailError);
+      return res.status(500).json({ message: "Failed to send email. Check SMTP settings. " + mailError.message });
+    }
   } catch (error) {
     next(error);
   }
@@ -117,12 +124,18 @@ router.post("/signup", async (req, res, next) => {
       return res.status(400).json({ message: "Email already in use" });
     }
 
+    let freePlan = await SubscriptionPlan.findOne({ where: { price: 0 } });
+    if (!freePlan) {
+      freePlan = await SubscriptionPlan.create({ name: "Free Trial", price: 0, tableLimit: 5, menuLimit: 20 });
+    }
+
     const subAdmin = await SubAdmin.create({
       name,
       email,
       password,
       phone: phone || "",
-      status: "active"
+      status: "active",
+      subscriptionPlanId: freePlan.id
     });
 
     otpCache.delete(email);
@@ -144,12 +157,64 @@ router.post("/signup", async (req, res, next) => {
   }
 });
 
-router.post("/demo-login", async (req, res, next) => {
+router.post("/demo/send-otp", async (req, res, next) => {
   try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    const admin = await SuperAdmin.findOne();
+    if (!admin || !admin.smtpEmail || !admin.smtpPassword) {
+      return res.status(500).json({ message: "SMTP not configured by Super Admin. Please contact support." });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: admin.smtpEmail,
+        pass: admin.smtpPassword
+      }
+    });
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpCache.set(email + "_demo", { otp, expires: Date.now() + 10 * 60 * 1000 });
+
+    try {
+      await transporter.sendMail({
+        from: admin.smtpEmail,
+        to: email,
+        subject: "DreamApp POS - Demo Access OTP",
+        text: `Your OTP to access the demo is: ${otp}. It will expire in 10 minutes.`
+      });
+      res.json({ message: "OTP sent successfully" });
+    } catch (mailError) {
+      console.error("SMTP Error:", mailError);
+      return res.status(500).json({ message: "Failed to send email. Check SMTP settings. " + mailError.message });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/demo-login-otp", async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
+    }
+
+    const cached = otpCache.get(email + "_demo");
+    if (!cached || cached.otp !== otp || cached.expires < Date.now()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
     const user = await SubAdmin.findOne({ where: { email: 'demo@dreamapp.com' } });
     if (!user) {
-      return res.status(404).json({ message: "Demo account not found" });
+      return res.status(404).json({ message: "Demo account not found. Please contact support." });
     }
+
+    otpCache.delete(email + "_demo");
 
     const token = createToken(user, "subadmin");
 
