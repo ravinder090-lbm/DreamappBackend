@@ -7,6 +7,9 @@ import { requireAuth } from "../middleware/auth.js";
 import { geocodeAddress } from "../lib/googleMaps.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
 import { Op } from "sequelize";
+import nodemailer from "nodemailer";
+
+const otpCache = new Map();
 
 const router = Router();
 
@@ -54,6 +57,112 @@ router.post("/login", async (req, res, next) => {
         role,
         ...(role === "subadmin" && { subscriptionPlan: await user.getSubscriptionPlan() })
       },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/signup/send-otp", async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    const existing = await SubAdmin.findOne({ where: { email } });
+    if (existing) return res.status(400).json({ message: "Email already in use" });
+
+    const admin = await SuperAdmin.findOne();
+    if (!admin || !admin.smtpEmail || !admin.smtpPassword) {
+      return res.status(500).json({ message: "SMTP not configured by Super Admin. Please contact support." });
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: admin.smtpEmail,
+        pass: admin.smtpPassword
+      }
+    });
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpCache.set(email, { otp, expires: Date.now() + 10 * 60 * 1000 });
+
+    await transporter.sendMail({
+      from: admin.smtpEmail,
+      to: email,
+      subject: "DreamApp POS - Signup OTP",
+      text: `Your OTP for signup is: ${otp}. It will expire in 10 minutes.`
+    });
+
+    res.json({ message: "OTP sent successfully" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/signup", async (req, res, next) => {
+  try {
+    const { name, email, password, phone, otp } = req.body;
+    if (!name || !email || !password || !otp) {
+      return res.status(400).json({ message: "Name, email, password, and OTP are required" });
+    }
+
+    const cached = otpCache.get(email);
+    if (!cached || cached.otp !== otp || cached.expires < Date.now()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    const existing = await SubAdmin.findOne({ where: { email } });
+    if (existing) {
+      return res.status(400).json({ message: "Email already in use" });
+    }
+
+    const subAdmin = await SubAdmin.create({
+      name,
+      email,
+      password,
+      phone: phone || "",
+      status: "active"
+    });
+
+    otpCache.delete(email);
+
+    const token = createToken(subAdmin, "subadmin");
+
+    return res.status(201).json({
+      token,
+      user: {
+        id: subAdmin.id || subAdmin._id,
+        name: subAdmin.name,
+        email: subAdmin.email,
+        logo: subAdmin.logo || "",
+        role: "subadmin"
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/demo-login", async (req, res, next) => {
+  try {
+    const user = await SubAdmin.findOne({ where: { email: 'demo@dreamapp.com' } });
+    if (!user) {
+      return res.status(404).json({ message: "Demo account not found" });
+    }
+
+    const token = createToken(user, "subadmin");
+
+    return res.json({
+      token,
+      user: {
+        id: user._id || user.id,
+        name: user.name,
+        email: user.email,
+        logo: user.logo || "",
+        role: "subadmin",
+        subscriptionPlan: await user.getSubscriptionPlan()
+      }
     });
   } catch (error) {
     return next(error);
@@ -365,6 +474,32 @@ router.post("/reset-password", async (req, res, next) => {
     return res.json({ message: "Password reset successfully." });
   } catch (error) {
     return next(error);
+  }
+});
+
+router.get("/superadmin/config", requireAuth(["superadmin"]), async (req, res, next) => {
+  try {
+    const admin = await SuperAdmin.findByPk(req.user.id);
+    if (!admin) return res.status(404).json({ message: "Admin not found" });
+    res.json({
+      smtpEmail: admin.smtpEmail || "",
+      smtpPassword: admin.smtpPassword || ""
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put("/superadmin/config", requireAuth(["superadmin"]), async (req, res, next) => {
+  try {
+    const { smtpEmail, smtpPassword } = req.body;
+    await SuperAdmin.update(
+      { smtpEmail, smtpPassword },
+      { where: { id: req.user.id } }
+    );
+    res.json({ message: "SMTP configuration updated" });
+  } catch (error) {
+    next(error);
   }
 });
 

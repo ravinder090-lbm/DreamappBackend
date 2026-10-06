@@ -41,6 +41,14 @@ SuperAdmin.init(
       type: DataTypes.STRING,
       defaultValue: "superadmin",
     },
+    smtpEmail: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    smtpPassword: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   },
   {
     sequelize,
