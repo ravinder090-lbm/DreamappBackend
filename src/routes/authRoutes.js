@@ -73,9 +73,22 @@ router.post("/signup/send-otp", async (req, res, next) => {
     const existing = await SubAdmin.findOne({ where: { email } });
     if (existing) return res.status(400).json({ message: "Email already in use" });
 
+    try {
+      const existingLead = await Lead.findOne({ where: { email } });
+      if (!existingLead) {
+        await Lead.create({ email, source: 'signup_attempt' });
+      }
+    } catch (e) {
+      console.error("Failed to save lead:", e);
+    }
+
     const admin = await SuperAdmin.findOne();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpCache.set(email, { otp, expires: Date.now() + 10 * 60 * 1000 });
+
     if (!admin || !admin.smtpEmail || !admin.smtpPassword) {
-      return res.status(500).json({ message: "SMTP not configured by Super Admin. Please contact support." });
+      console.log(`[DEV MODE] OTP for ${email}: ${otp}`);
+      return res.json({ message: "OTP generated (check server console, SMTP not configured)" });
     }
 
     const transporter = nodemailer.createTransport({
@@ -88,9 +101,6 @@ router.post("/signup/send-otp", async (req, res, next) => {
       }
     });
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpCache.set(email, { otp, expires: Date.now() + 10 * 60 * 1000 });
-
     try {
       await transporter.sendMail({
         from: admin.smtpEmail,
@@ -101,7 +111,8 @@ router.post("/signup/send-otp", async (req, res, next) => {
       res.json({ message: "OTP sent successfully" });
     } catch (mailError) {
       console.error("SMTP Error:", mailError);
-      return res.status(500).json({ message: "Failed to send email. Check SMTP settings. " + mailError.message });
+      console.log(`[DEV MODE] OTP for ${email}: ${otp}`);
+      return res.json({ message: "OTP generated (fallback: check server console due to SMTP error)" });
     }
   } catch (error) {
     next(error);
@@ -163,9 +174,22 @@ router.post("/demo/send-otp", async (req, res, next) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required" });
 
+    try {
+      const existingLead = await Lead.findOne({ where: { email } });
+      if (!existingLead) {
+        await Lead.create({ email, source: 'demo_access' });
+      }
+    } catch (e) {
+      console.error("Failed to save lead:", e);
+    }
+
     const admin = await SuperAdmin.findOne();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpCache.set(email + "_demo", { otp, expires: Date.now() + 10 * 60 * 1000 });
+
     if (!admin || !admin.smtpEmail || !admin.smtpPassword) {
-      return res.status(500).json({ message: "SMTP not configured by Super Admin. Please contact support." });
+      console.log(`[DEV MODE] Demo OTP for ${email}: ${otp}`);
+      return res.json({ message: "OTP generated (check server console, SMTP not configured)" });
     }
 
     const transporter = nodemailer.createTransport({
@@ -178,9 +202,6 @@ router.post("/demo/send-otp", async (req, res, next) => {
       }
     });
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpCache.set(email + "_demo", { otp, expires: Date.now() + 10 * 60 * 1000 });
-
     try {
       await transporter.sendMail({
         from: admin.smtpEmail,
@@ -191,7 +212,8 @@ router.post("/demo/send-otp", async (req, res, next) => {
       res.json({ message: "OTP sent successfully" });
     } catch (mailError) {
       console.error("SMTP Error:", mailError);
-      return res.status(500).json({ message: "Failed to send email. Check SMTP settings. " + mailError.message });
+      console.log(`[DEV MODE] Demo OTP for ${email}: ${otp}`);
+      return res.json({ message: "OTP generated (fallback: check server console due to SMTP error)" });
     }
   } catch (error) {
     next(error);
@@ -216,15 +238,6 @@ router.post("/demo-login-otp", async (req, res, next) => {
     }
 
     otpCache.delete(email + "_demo");
-
-    try {
-      const existingLead = await Lead.findOne({ where: { email } });
-      if (!existingLead) {
-        await Lead.create({ email, source: 'demo_access' });
-      }
-    } catch (e) {
-      console.error("Failed to save lead:", e);
-    }
 
     const token = createToken(user, "subadmin");
 
