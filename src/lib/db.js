@@ -67,6 +67,7 @@ export async function connectDB() {
     await import("../models/Booking.js");
     await import("../models/Task.js");
     await import("../models/DeliveryAgent.js");
+    await import("../models/Lead.js");
 
     // await sequelize.sync();
     console.log("Database connected & models ready.");

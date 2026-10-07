@@ -4,6 +4,7 @@ import { SubAdmin } from "../models/SubAdmin.js";
 import { SuperAdmin } from "../models/SuperAdmin.js";
 import { SubscriptionPlan } from "../models/SubscriptionPlan.js";
 import { DeliveryAgent } from "../models/DeliveryAgent.js";
+import { Lead } from "../models/Lead.js";
 import { requireAuth } from "../middleware/auth.js";
 import { geocodeAddress } from "../lib/googleMaps.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
@@ -215,6 +216,15 @@ router.post("/demo-login-otp", async (req, res, next) => {
     }
 
     otpCache.delete(email + "_demo");
+
+    try {
+      const existingLead = await Lead.findOne({ where: { email } });
+      if (!existingLead) {
+        await Lead.create({ email, source: 'demo_access' });
+      }
+    } catch (e) {
+      console.error("Failed to save lead:", e);
+    }
 
     const token = createToken(user, "subadmin");
 
@@ -563,6 +573,15 @@ router.put("/superadmin/config", requireAuth(["superadmin"]), async (req, res, n
       { where: { id: req.user.id } }
     );
     res.json({ message: "SMTP configuration updated" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/superadmin/leads", requireAuth(["superadmin"]), async (req, res, next) => {
+  try {
+    const leads = await Lead.findAll({ order: [['createdAt', 'DESC']] });
+    res.json(leads);
   } catch (error) {
     next(error);
   }
