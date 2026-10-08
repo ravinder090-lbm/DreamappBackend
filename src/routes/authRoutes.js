@@ -98,8 +98,8 @@ router.post("/signup/send-otp", async (req, res, next) => {
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      port: 587,
+      secure: false, // true for 465, false for other ports (automatically uses STARTTLS)
       auth: {
         user: admin.smtpEmail,
         pass: admin.smtpPassword
@@ -205,8 +205,8 @@ router.post("/demo/send-otp", async (req, res, next) => {
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      port: 587,
+      secure: false, // true for 465, false for other ports (automatically uses STARTTLS)
       auth: {
         user: admin.smtpEmail,
         pass: admin.smtpPassword
