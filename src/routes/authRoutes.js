@@ -88,7 +88,12 @@ router.post("/signup/send-otp", async (req, res, next) => {
 
     if (!admin || !admin.smtpEmail || !admin.smtpPassword) {
       console.log(`[DEV MODE] OTP for ${email}: ${otp}`);
-      return res.json({ message: "OTP generated (check server console, SMTP not configured)" });
+      // If we are on localhost, maybe we can allow it, but on production we should error.
+      // We will check if the host is localhost based on req.hostname
+      if (req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
+        return res.json({ message: "OTP generated (check server console, SMTP not configured)" });
+      }
+      return res.status(500).json({ message: "SMTP is not configured in this environment's Super Admin dashboard. Please configure it first." });
     }
 
     const transporter = nodemailer.createTransport({
@@ -111,8 +116,11 @@ router.post("/signup/send-otp", async (req, res, next) => {
       res.json({ message: "OTP sent successfully" });
     } catch (mailError) {
       console.error("SMTP Error:", mailError);
-      console.log(`[DEV MODE] OTP for ${email}: ${otp}`);
-      return res.json({ message: "OTP generated (fallback: check server console due to SMTP error)" });
+      if (req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
+        console.log(`[DEV MODE] OTP for ${email}: ${otp}`);
+        return res.json({ message: "OTP generated (fallback: check server console due to SMTP error)" });
+      }
+      return res.status(500).json({ message: "Failed to send email from server. Check your Gmail App Password and SMTP settings." });
     }
   } catch (error) {
     next(error);
@@ -189,7 +197,10 @@ router.post("/demo/send-otp", async (req, res, next) => {
 
     if (!admin || !admin.smtpEmail || !admin.smtpPassword) {
       console.log(`[DEV MODE] Demo OTP for ${email}: ${otp}`);
-      return res.json({ message: "OTP generated (check server console, SMTP not configured)" });
+      if (req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
+        return res.json({ message: "OTP generated (check server console, SMTP not configured)" });
+      }
+      return res.status(500).json({ message: "SMTP is not configured in this environment's Super Admin dashboard. Please configure it first." });
     }
 
     const transporter = nodemailer.createTransport({
@@ -212,8 +223,11 @@ router.post("/demo/send-otp", async (req, res, next) => {
       res.json({ message: "OTP sent successfully" });
     } catch (mailError) {
       console.error("SMTP Error:", mailError);
-      console.log(`[DEV MODE] Demo OTP for ${email}: ${otp}`);
-      return res.json({ message: "OTP generated (fallback: check server console due to SMTP error)" });
+      if (req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
+        console.log(`[DEV MODE] Demo OTP for ${email}: ${otp}`);
+        return res.json({ message: "OTP generated (fallback: check server console due to SMTP error)" });
+      }
+      return res.status(500).json({ message: "Failed to send email from server. Check your Gmail App Password and SMTP settings." });
     }
   } catch (error) {
     next(error);
