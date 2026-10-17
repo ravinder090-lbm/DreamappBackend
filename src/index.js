@@ -45,10 +45,14 @@ if (!isVercel) {
   httpServer = createServer(app);
   io = new Server(httpServer, {
     maxHttpBufferSize: 1e8, // 100 MB
+    transports: ["websocket", "polling"],
     cors: {
       origin: socketCors.origin,
       methods: socketCors.methods
-    }
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    allowEIO3: true
   });
 
   io.on("connection", (socket) => {
