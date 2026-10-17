@@ -310,13 +310,13 @@ router.post("/verify-otp", async (req, res, next) => {
       }
     }
 
-    let user = await User.findOne({ where: { phone, subAdminId } });
+    let user = await User.findOne({ where: { phone, subAdminId: finalSubAdminId } });
     if (!user) {
       user = await User.create({
         name: `Guest ${phone.substring(Math.max(0, phone.length - 4))}`,
         phone,
         email: `${phone}@guest.local`,
-        subAdminId,
+        subAdminId: finalSubAdminId,
         address: orderType === "Home Delivery" && address ? address : ""
       });
     } else if (orderType === "Home Delivery" && address) {
@@ -355,7 +355,7 @@ router.post("/verify-otp", async (req, res, next) => {
         total,
         paymentMethod: orderType === "Home Delivery" ? paymentMethod : "COD",
         paymentStatus: (orderType === "Home Delivery" && paymentMethod === "Online") ? "paid" : "pending",
-        subAdminId
+        subAdminId: finalSubAdminId
       });
       
       if (orderType === "Dine In" && table) {
@@ -363,11 +363,11 @@ router.post("/verify-otp", async (req, res, next) => {
         await table.save();
       }
       
-      invalidateOrdersCache(subAdminId);
+      invalidateOrdersCache(finalSubAdminId);
       if (req.io) {
-        req.io.to(subAdminId.toString()).emit("order_created", newOrder);
+        req.io.to(finalSubAdminId.toString()).emit("order_created", newOrder);
       }
-      whatsappManager.sendOrderInvoice(subAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
+      whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
     }
 
     return res.json({ message: "OTP verified successfully", user, order: newOrder });
@@ -397,7 +397,7 @@ router.post("/place-order", async (req, res, next) => {
       return res.status(400).json({ message: "Invalid table or restaurant ID" });
     }
 
-    const subAdmin = await SubAdmin.findByPk(subAdminId);
+    const subAdmin = await SubAdmin.findByPk(finalSubAdminId);
     if (!subAdmin) {
       return res.status(400).json({ message: "Store not found" });
     }
@@ -445,13 +445,13 @@ router.post("/place-order", async (req, res, next) => {
       }
     }
 
-    let user = await User.findOne({ where: { phone, subAdminId } });
+    let user = await User.findOne({ where: { phone, subAdminId: finalSubAdminId } });
     if (!user) {
       user = await User.create({
         name: `Guest ${phone.substring(Math.max(0, phone.length - 4))}`,
         phone,
         email: `${phone}@guest.local`,
-        subAdminId,
+        subAdminId: finalSubAdminId,
         address: orderType === "Home Delivery" && address ? address : ""
       });
     } else if (orderType === "Home Delivery" && address) {
@@ -490,7 +490,7 @@ router.post("/place-order", async (req, res, next) => {
         total,
         paymentMethod: orderType === "Home Delivery" ? paymentMethod : "COD",
         paymentStatus: (orderType === "Home Delivery" && paymentMethod === "Online") ? "paid" : "pending",
-        subAdminId
+        subAdminId: finalSubAdminId
       });
 
       if (orderType === "Dine In" && table) {
@@ -499,10 +499,11 @@ router.post("/place-order", async (req, res, next) => {
       }
 
       if (newOrder) {
+        invalidateOrdersCache(finalSubAdminId);
         if (req.io) {
-          req.io.to(subAdminId.toString()).emit("order_created", newOrder);
+          req.io.to(finalSubAdminId.toString()).emit("order_created", newOrder);
         }
-        whatsappManager.sendOrderInvoice(subAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
+        whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
       }
     }
 
