@@ -56,17 +56,27 @@ if (!isVercel) {
   });
 
   io.on("connection", (socket) => {
-    console.log(`Socket connected: ${socket.id}`);
+    console.log(`[Socket.io] Connected: ${socket.id} from ${socket.handshake.address}`);
 
     socket.on("join", (roomId) => {
       if (roomId) {
-        socket.join(roomId);
-        console.log(`Socket ${socket.id} joined room ${roomId}`);
+        const idStr = String(roomId).trim();
+        socket.join(idStr);
+        if (idStr !== roomId) {
+          socket.join(roomId);
+        }
+        console.log(`[Socket.io] Socket ${socket.id} joined room: ${idStr}`);
       }
     });
 
-    socket.on("disconnect", () => {
-      console.log(`Socket disconnected: ${socket.id}`);
+    socket.on("ping_server", (data, callback) => {
+      if (typeof callback === "function") {
+        callback({ status: "ok", timestamp: Date.now() });
+      }
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log(`[Socket.io] Disconnected: ${socket.id} (reason: ${reason})`);
     });
   });
 }

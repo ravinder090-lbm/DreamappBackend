@@ -4,7 +4,13 @@ import { Table } from "./Table.js";
 import { SubAdmin } from "./SubAdmin.js";
 import { DeliveryAgent } from "./DeliveryAgent.js";
 
-export class Order extends Model {}
+export class Order extends Model {
+  toJSON() {
+    const values = { ...this.get() };
+    values._id = values.id;
+    return values;
+  }
+}
 
 Order.init(
   {
