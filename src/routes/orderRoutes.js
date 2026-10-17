@@ -136,7 +136,10 @@ router.post("/", async (req, res, next) => {
     });
     invalidateOrdersCache(req.user.id);
     if (req.io) {
-      req.io.to(req.user.id.toString()).emit("order_created", populated);
+      const room = req.user.id.toString();
+      const count = req.io.sockets?.adapter?.rooms?.get(room)?.size || 0;
+      console.log(`[Socket.io] Emitting order_created to room "${room}" (active listeners: ${count})`);
+      req.io.to(room).emit("order_created", populated);
     }
     if (populated.customerPhone) {
       const subAdmin = await SubAdmin.findByPk(req.user.id);

@@ -365,7 +365,10 @@ router.post("/verify-otp", async (req, res, next) => {
       
       invalidateOrdersCache(finalSubAdminId);
       if (req.io) {
-        req.io.to(finalSubAdminId.toString()).emit("order_created", newOrder);
+        const room = finalSubAdminId.toString();
+        const count = req.io.sockets?.adapter?.rooms?.get(room)?.size || 0;
+        console.log(`[Socket.io] Emitting order_created to room "${room}" (active listeners: ${count})`);
+        req.io.to(room).emit("order_created", newOrder);
       }
       whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
     }
@@ -501,7 +504,10 @@ router.post("/place-order", async (req, res, next) => {
       if (newOrder) {
         invalidateOrdersCache(finalSubAdminId);
         if (req.io) {
-          req.io.to(finalSubAdminId.toString()).emit("order_created", newOrder);
+          const room = finalSubAdminId.toString();
+          const count = req.io.sockets?.adapter?.rooms?.get(room)?.size || 0;
+          console.log(`[Socket.io] Emitting order_created to room "${room}" (active listeners: ${count})`);
+          req.io.to(room).emit("order_created", newOrder);
         }
         whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
       }
