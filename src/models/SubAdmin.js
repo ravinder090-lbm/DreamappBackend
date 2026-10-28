@@ -97,6 +97,21 @@ SubAdmin.init(
       type: DataTypes.STRING,
       defaultValue: "",
     },
+    waiterName: {
+      type: DataTypes.STRING,
+      defaultValue: "",
+    },
+    // Stored as a bcrypt hash. It is never returned by an API response.
+    waiterPassword: {
+      type: DataTypes.STRING,
+      defaultValue: "",
+    },
+    // Each entry stores { name, password }, where password is a bcrypt hash.
+    // The API never returns this column to a public client.
+    waiters: {
+      type: DataTypes.JSONB,
+      defaultValue: [],
+    },
     enableDineIn: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
@@ -153,6 +168,9 @@ SubAdmin.init(
       beforeSave: async (subadmin) => {
         if (subadmin.changed("password")) {
           subadmin.password = await bcrypt.hash(subadmin.password, 10);
+        }
+        if (subadmin.changed("waiterPassword") && subadmin.waiterPassword) {
+          subadmin.waiterPassword = await bcrypt.hash(subadmin.waiterPassword, 10);
         }
       },
     },

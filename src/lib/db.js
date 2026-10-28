@@ -70,6 +70,7 @@ export async function connectDB() {
     await import("../models/Lead.js");
 
     // await sequelize.sync();
+    await sequelize.query('ALTER TABLE "Tables" ADD COLUMN IF NOT EXISTS "tableType" VARCHAR(255) DEFAULT \'table\';').catch(() => {});
     console.log("Database connected & models ready.");
   } catch (error) {
     console.error("Unable to connect to the database:", error);

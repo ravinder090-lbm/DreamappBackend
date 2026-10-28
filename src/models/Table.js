@@ -25,6 +25,14 @@ Table.init(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    tableType: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: "table",
+      validate: {
+        isIn: [["table", "room"]],
+      },
+    },
     capacity: {
       type: DataTypes.INTEGER,
       defaultValue: 2,

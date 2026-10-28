@@ -8,10 +8,41 @@ import { Lead } from "../models/Lead.js";
 import { requireAuth } from "../middleware/auth.js";
 import { geocodeAddress } from "../lib/googleMaps.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
+import { invalidateWaiterCache } from "./publicRoutes.js";
 import { Op } from "sequelize";
 import nodemailer from "nodemailer";
+import bcrypt from "bcrypt";
+import { getWaiterCredentials, hasWaiterCredentials, publicWaiterCredentials, waiterNameKey } from "../lib/waiterCredentials.js";
 
 const otpCache = new Map();
+
+function configPayload(subAdmin) {
+  const waiters = publicWaiterCredentials(subAdmin);
+  return {
+    address: subAdmin.address || "",
+    deliveryRadius: subAdmin.deliveryRadius || 0,
+    lat: subAdmin.lat || 0,
+    lng: subAdmin.lng || 0,
+    themeColor: subAdmin.themeColor || "#1d6f56",
+    logo: subAdmin.logo || "",
+    enableDineIn: subAdmin.enableDineIn !== false,
+    enableTakeAway: subAdmin.enableTakeAway !== false,
+    enableDelivery: subAdmin.enableDelivery !== false,
+    enableCOD: subAdmin.enableCOD !== false,
+    autoAcceptOrders: subAdmin.autoAcceptOrders !== false,
+    publicMenuTheme: subAdmin.publicMenuTheme || "default",
+    waiterPin: subAdmin.waiterPin || "",
+    // waiterName is retained for an older settings client during rollout.
+    waiterName: waiters[0]?.name || "",
+    waiters,
+    hasWaiterCredentials: hasWaiterCredentials(subAdmin),
+    waiterTone: subAdmin.waiterTone || "default",
+    orderTone: subAdmin.orderTone || "default",
+    sgstPercent: subAdmin.sgstPercent || 0,
+    cgstPercent: subAdmin.cgstPercent || 0,
+    deliveryCharges: subAdmin.deliveryCharges || 0,
+  };
+}
 
 const router = Router();
 
@@ -378,26 +409,7 @@ router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
     if (!subAdmin) {
       return res.status(404).json({ message: "Subadmin not found" });
     }
-    return res.json({
-      address: subAdmin.address || "",
-      deliveryRadius: subAdmin.deliveryRadius || 0,
-      lat: subAdmin.lat || 0,
-      lng: subAdmin.lng || 0,
-      themeColor: subAdmin.themeColor || "#1d6f56",
-      logo: subAdmin.logo || "",
-      enableDineIn: subAdmin.enableDineIn !== false,
-      enableTakeAway: subAdmin.enableTakeAway !== false,
-      enableDelivery: subAdmin.enableDelivery !== false,
-      enableCOD: subAdmin.enableCOD !== false,
-      autoAcceptOrders: subAdmin.autoAcceptOrders !== false,
-      publicMenuTheme: subAdmin.publicMenuTheme || "default",
-      waiterPin: subAdmin.waiterPin || "",
-      waiterTone: subAdmin.waiterTone || "default",
-      orderTone: subAdmin.orderTone || "default",
-      sgstPercent: subAdmin.sgstPercent || 0,
-      cgstPercent: subAdmin.cgstPercent || 0,
-      deliveryCharges: subAdmin.deliveryCharges || 0,
-    });
+    return res.json(configPayload(subAdmin));
   } catch (error) {
     return next(error);
   }
@@ -405,7 +417,7 @@ router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
 
 router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
   try {
-    const { address, deliveryRadius, lat, lng, themeColor, publicMenuTheme, waiterPin, waiterTone, orderTone, logo, enableDineIn, enableTakeAway, enableDelivery, enableCOD, autoAcceptOrders, sgstPercent, cgstPercent, deliveryCharges } = req.body;
+    const { address, deliveryRadius, lat, lng, themeColor, publicMenuTheme, waiterPin, waiterName, waiterPassword, waiterAction, waiterTone, orderTone, logo, enableDineIn, enableTakeAway, enableDelivery, enableCOD, autoAcceptOrders, sgstPercent, cgstPercent, deliveryCharges } = req.body;
 
     const updateData = {};
     if (address !== undefined) updateData.address = address;
@@ -415,6 +427,15 @@ router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
     if (themeColor !== undefined) updateData.themeColor = themeColor;
     if (publicMenuTheme !== undefined) updateData.publicMenuTheme = publicMenuTheme;
     if (waiterPin !== undefined) updateData.waiterPin = waiterPin;
+    if (!waiterAction) {
+      if (waiterName !== undefined) updateData.waiterName = String(waiterName).trim();
+      if (waiterPassword !== undefined && waiterPassword !== "") {
+        if (String(waiterPassword).length < 4) {
+          return res.status(400).json({ message: "Waiter password must be at least 4 characters" });
+        }
+        updateData.waiterPassword = String(waiterPassword);
+      }
+    }
     if (waiterTone !== undefined) updateData.waiterTone = waiterTone;
     if (orderTone !== undefined) updateData.orderTone = orderTone;
     if (logo !== undefined) updateData.logo = logo;
@@ -435,33 +456,62 @@ router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
       }
     }
 
-    await SubAdmin.update(updateData, { where: { id: req.user.id } });
     const subAdmin = await SubAdmin.findByPk(req.user.id);
     if (!subAdmin) {
       return res.status(404).json({ message: "Subadmin not found" });
     }
+
+    if (waiterAction) {
+      const name = String(waiterName || "").trim();
+      const nameKey = waiterNameKey(name);
+      const waiters = getWaiterCredentials(subAdmin);
+
+      if (waiterAction === "add") {
+        if (!name) {
+          return res.status(400).json({ message: "Waiter name is required" });
+        }
+        if (String(waiterPassword || "").length < 4) {
+          return res.status(400).json({ message: "Waiter password must be at least 4 characters" });
+        }
+        if (waiters.some((waiter) => waiterNameKey(waiter.name) === nameKey)) {
+          return res.status(400).json({ message: "A waiter with this name already exists" });
+        }
+        waiters.push({ name, password: await bcrypt.hash(String(waiterPassword), 10) });
+      } else if (waiterAction === "remove") {
+        const remainingWaiters = waiters.filter((waiter) => waiterNameKey(waiter.name) !== nameKey);
+        if (!name || remainingWaiters.length === waiters.length) {
+          return res.status(404).json({ message: "Waiter not found" });
+        }
+        waiters.splice(0, waiters.length, ...remainingWaiters);
+      } else {
+        return res.status(400).json({ message: "Unsupported waiter action" });
+      }
+
+      updateData.waiters = waiters;
+      // Once managed as a list, move any legacy credential into the list and
+      // clear it so deleting the final waiter truly removes access.
+      updateData.waiterName = "";
+      updateData.waiterPassword = "";
+    } else {
+      const effectiveWaiterName = updateData.waiterName !== undefined ? updateData.waiterName : subAdmin.waiterName;
+      const hasNewWaiterPassword = updateData.waiterPassword !== undefined;
+      if (waiterName !== undefined && !effectiveWaiterName) {
+        updateData.waiterPassword = "";
+      } else if (effectiveWaiterName && !subAdmin.waiterPassword && !hasNewWaiterPassword) {
+        return res.status(400).json({ message: "Set a password when creating a waiter login" });
+      } else if (hasNewWaiterPassword && !effectiveWaiterName) {
+        return res.status(400).json({ message: "Enter a waiter name before setting a password" });
+      }
+    }
+
+    Object.assign(subAdmin, updateData);
+    await subAdmin.save();
+    if (waiterAction || waiterName !== undefined || waiterPassword !== undefined || waiterPin !== undefined) {
+      invalidateWaiterCache(subAdmin.id);
+    }
     return res.json({
       message: "Configuration updated successfully",
-      config: {
-        address: subAdmin.address || "",
-        deliveryRadius: subAdmin.deliveryRadius || 0,
-        lat: subAdmin.lat || 0,
-        lng: subAdmin.lng || 0,
-        themeColor: subAdmin.themeColor || "#1d6f56",
-        logo: subAdmin.logo || "",
-        enableDineIn: subAdmin.enableDineIn !== false,
-        enableTakeAway: subAdmin.enableTakeAway !== false,
-        enableDelivery: subAdmin.enableDelivery !== false,
-        enableCOD: subAdmin.enableCOD !== false,
-        autoAcceptOrders: subAdmin.autoAcceptOrders !== false,
-        publicMenuTheme: subAdmin.publicMenuTheme || "default",
-        waiterPin: subAdmin.waiterPin || "",
-        waiterTone: subAdmin.waiterTone || "default",
-        orderTone: subAdmin.orderTone || "default",
-        sgstPercent: subAdmin.sgstPercent || 0,
-        cgstPercent: subAdmin.cgstPercent || 0,
-        deliveryCharges: subAdmin.deliveryCharges || 0,
-      }
+      config: configPayload(subAdmin)
     });
   } catch (error) {
     return next(error);

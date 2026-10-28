@@ -5,6 +5,11 @@ import { Table } from "../models/Table.js";
 import { SubAdmin } from "../models/SubAdmin.js";
 
 const router = Router();
+const tableTypes = new Set(["table", "room"]);
+
+function hasValidTableType(tableType) {
+  return tableType === undefined || tableTypes.has(tableType);
+}
 
 router.use(requireAuth(["subadmin"]));
 
@@ -54,6 +59,10 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
+    if (!hasValidTableType(req.body.tableType)) {
+      return res.status(400).json({ message: "Location type must be either table or room" });
+    }
+
     const subAdmin = await SubAdmin.findByPk(req.user.id, { include: ["subscriptionPlan"] });
     let limit = 2; // Default free tier limit
     if (subAdmin && subAdmin.subscriptionPlan && subAdmin.subscriptionPlan.tableLimit !== null) {
@@ -67,7 +76,11 @@ router.post("/", async (req, res, next) => {
       }
     }
 
-    const table = await Table.create({ ...req.body, subAdminId: req.user.id });
+    const table = await Table.create({
+      ...req.body,
+      tableType: req.body.tableType || "table",
+      subAdminId: req.user.id
+    });
     res.status(201).json(table);
   } catch (error) {
     next(error);
@@ -76,6 +89,10 @@ router.post("/", async (req, res, next) => {
 
 router.post("/:id", async (req, res, next) => {
   try {
+    if (!hasValidTableType(req.body.tableType)) {
+      return res.status(400).json({ message: "Location type must be either table or room" });
+    }
+
     const [updatedCount] = await Table.update(req.body, {
       where: { id: req.params.id, subAdminId: req.user.id }
     });

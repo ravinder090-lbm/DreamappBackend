@@ -48,7 +48,7 @@ router.get("/", async (req, res, next) => {
     const options = {
       where: { subAdminId: req.user.id },
       include: [
-        { model: Table, as: "table", attributes: ["name", "code"] },
+        { model: Table, as: "table", attributes: ["name", "code", "tableType"] },
         { model: DeliveryAgent, as: "deliveryAgent", attributes: ["id", "name", "phone", "status", "vehicleDetails"] }
       ],
       order: [["createdAt", "DESC"]],

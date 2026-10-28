@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Op } from "sequelize";
+import bcrypt from "bcrypt";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -14,6 +15,7 @@ import { Booking } from "../models/Booking.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
 import { geocodeAddress, getHaversineDistance } from "../lib/googleMaps.js";
 import { invalidateOrdersCache } from "./orderRoutes.js";
+import { getWaiterCredentials, hasWaiterCredentials } from "../lib/waiterCredentials.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -185,18 +187,21 @@ router.get("/menu-by-slug/:slug", async (req, res, next) => {
   }
 });
 
-// In-memory store for OTPs (phone -> otp)
+// Short-lived public-menu OTPs. They are scoped to the restaurant as well as
+// the phone number so a code cannot be reused at another restaurant.
 const otpStore = new Map();
+
+const OTP_TTL_MS = 10 * 60 * 1000;
+const normalisePhone = (phone) => String(phone || "").replace(/\D/g, "");
+const otpKey = (subAdminId, phone) => `${subAdminId}:${normalisePhone(phone)}`;
 
 router.post("/send-otp", async (req, res, next) => {
   try {
     const { phone, tableId, subAdminId } = req.body;
-    if (!phone) {
-      return res.status(400).json({ message: "Phone number is required" });
+    const normalisedPhone = normalisePhone(phone);
+    if (normalisedPhone.length < 8 || normalisedPhone.length > 15) {
+      return res.status(400).json({ message: "Enter a valid phone number" });
     }
-
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    otpStore.set(phone, otp);
 
     let sentViaWhatsapp = false;
     let restaurantId = subAdminId;
@@ -206,23 +211,30 @@ router.post("/send-otp", async (req, res, next) => {
       if (table) restaurantId = table.subAdminId;
     }
 
-    if (restaurantId) {
-      const subAdmin = await SubAdmin.findByPk(restaurantId);
-      if (!subAdmin || !subAdmin.whatsAppConnected) {
-        return res.status(400).json({ message: "Something went wrong. This restaurant is currently not accepting online orders." });
-      }
-        if (subAdmin && subAdmin.whatsAppConnected) {
-          try {
-            await whatsappManager.sendOTP(subAdmin.id.toString(), phone, otp);
-            sentViaWhatsapp = true;
-          } catch (err) {
-            console.error(`Failed to send WhatsApp OTP via subadmin ${subAdmin.id}:`, err);
-          }
-        }
+    if (!restaurantId) {
+      return res.status(400).json({ message: "Invalid table or restaurant ID" });
+    }
+
+    const subAdmin = await SubAdmin.findByPk(restaurantId);
+    if (!subAdmin || !subAdmin.whatsAppConnected) {
+      return res.status(400).json({ message: "Something went wrong. This restaurant is currently not accepting online orders." });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpStore.set(otpKey(subAdmin.id, normalisedPhone), {
+      otp,
+      expiresAt: Date.now() + OTP_TTL_MS,
+    });
+
+    try {
+      await whatsappManager.sendOTP(subAdmin.id.toString(), normalisedPhone, otp);
+      sentViaWhatsapp = true;
+    } catch (err) {
+      console.error(`Failed to send WhatsApp OTP via subadmin ${subAdmin.id}:`, err);
     }
 
     if (!sentViaWhatsapp) {
-      console.log(`Mock OTP sent to ${phone}: ${otp}`);
+      console.log(`Mock OTP sent to ${normalisedPhone}: ${otp}`);
     }
 
     return res.json({ 
@@ -237,17 +249,11 @@ router.post("/send-otp", async (req, res, next) => {
 router.post("/verify-otp", async (req, res, next) => {
   try {
     const { phone, otp, tableId, subAdminId, cart, orderType = "Dine In", address, custCoords, paymentMethod = "COD" } = req.body;
+    const normalisedPhone = normalisePhone(phone);
 
-    if (!phone || !otp) {
+    if (!normalisedPhone || !otp) {
       return res.status(400).json({ message: "Phone and OTP are required" });
     }
-
-    const storedOtp = otpStore.get(phone);
-    if (storedOtp !== otp && otp !== "1234") {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
-    }
-
-    otpStore.delete(phone);
 
     let finalSubAdminId = subAdminId || null;
     let table = null;
@@ -262,6 +268,20 @@ router.post("/verify-otp", async (req, res, next) => {
       return res.status(400).json({ message: "Invalid table or restaurant ID" });
     }
 
+    // A room QR identifies where the guest is staying, so it always creates a
+    // Dine In order. This also prevents a crafted request from changing it to
+    // takeaway or delivery.
+    const finalOrderType = table?.tableType === "room" ? "Dine In" : orderType;
+
+    const key = otpKey(finalSubAdminId, normalisedPhone);
+    const storedOtp = otpStore.get(key);
+    if (!storedOtp || storedOtp.expiresAt <= Date.now() || storedOtp.otp !== String(otp).trim()) {
+      otpStore.delete(key);
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    otpStore.delete(key);
+
     const subAdmin = await SubAdmin.findByPk(finalSubAdminId);
     if (!subAdmin) {
       return res.status(400).json({ message: "Store not found" });
@@ -270,7 +290,7 @@ router.post("/verify-otp", async (req, res, next) => {
       return res.status(400).json({ message: "Something went wrong. This restaurant is currently not accepting online orders." });
     }
 
-    if (orderType === "Home Delivery") {
+    if (finalOrderType === "Home Delivery") {
       if (subAdmin && subAdmin.deliveryRadius > 0) {
         let restLat = subAdmin.lat;
         let restLng = subAdmin.lng;
@@ -310,16 +330,16 @@ router.post("/verify-otp", async (req, res, next) => {
       }
     }
 
-    let user = await User.findOne({ where: { phone, subAdminId: finalSubAdminId } });
+    let user = await User.findOne({ where: { phone: normalisedPhone, subAdminId: finalSubAdminId } });
     if (!user) {
       user = await User.create({
-        name: `Guest ${phone.substring(Math.max(0, phone.length - 4))}`,
-        phone,
-        email: `${phone}@guest.local`,
+        name: `Guest ${normalisedPhone.substring(Math.max(0, normalisedPhone.length - 4))}`,
+        phone: normalisedPhone,
+        email: `${normalisedPhone}@guest.local`,
         subAdminId: finalSubAdminId,
-        address: orderType === "Home Delivery" && address ? address : ""
+        address: finalOrderType === "Home Delivery" && address ? address : ""
       });
-    } else if (orderType === "Home Delivery" && address) {
+    } else if (finalOrderType === "Home Delivery" && address) {
       user.address = address;
       await user.save();
     }
@@ -335,7 +355,7 @@ router.post("/verify-otp", async (req, res, next) => {
       const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
       const sgstAmount = Number(((subtotal * (subAdmin?.sgstPercent || 0)) / 100).toFixed(2));
       const cgstAmount = Number(((subtotal * (subAdmin?.cgstPercent || 0)) / 100).toFixed(2));
-      const deliveryCharges = orderType === "Home Delivery" ? (subAdmin?.deliveryCharges || 0) : 0;
+      const deliveryCharges = finalOrderType === "Home Delivery" ? (subAdmin?.deliveryCharges || 0) : 0;
       const total = Number((subtotal + sgstAmount + cgstAmount + deliveryCharges).toFixed(2));
       
       newOrder = await Order.create({
@@ -343,22 +363,22 @@ router.post("/verify-otp", async (req, res, next) => {
         customerName: user.name,
         customerPhone: user.phone,
         status: subAdmin?.autoAcceptOrders === false ? "pending" : "preparing",
-        orderType,
-        tableId: orderType === "Dine In" ? table?.id : null,
-        tableName: orderType === "Dine In" ? table?.name || "" : "",
-        deliveryAddress: orderType === "Home Delivery" ? address || user.address || "" : "",
+        orderType: finalOrderType,
+        tableId: finalOrderType === "Dine In" ? table?.id : null,
+        tableName: finalOrderType === "Dine In" ? table?.name || "" : "",
+        deliveryAddress: finalOrderType === "Home Delivery" ? address || user.address || "" : "",
         items,
         subtotal,
         sgstAmount,
         cgstAmount,
         deliveryCharges,
         total,
-        paymentMethod: orderType === "Home Delivery" ? paymentMethod : "COD",
-        paymentStatus: (orderType === "Home Delivery" && paymentMethod === "Online") ? "paid" : "pending",
+        paymentMethod: finalOrderType === "Home Delivery" ? paymentMethod : "COD",
+        paymentStatus: (finalOrderType === "Home Delivery" && paymentMethod === "Online") ? "paid" : "pending",
         subAdminId: finalSubAdminId
       });
       
-      if (orderType === "Dine In" && table) {
+      if (finalOrderType === "Dine In" && table) {
         table.status = "occupied";
         await table.save();
       }
@@ -368,7 +388,11 @@ router.post("/verify-otp", async (req, res, next) => {
         const room = finalSubAdminId.toString();
         const count = req.io.sockets?.adapter?.rooms?.get(room)?.size || 0;
         console.log(`[Socket.io] Emitting order_created to room "${room}" (active listeners: ${count})`);
-        req.io.to(room).emit("order_created", newOrder);
+        const emitPayload = typeof newOrder.toJSON === "function" ? newOrder.toJSON() : { ...newOrder };
+        if (table) {
+          emitPayload.table = { id: table.id, name: table.name, tableType: table.tableType, code: table.code };
+        }
+        req.io.to(room).emit("order_created", emitPayload);
       }
       whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
     }
@@ -381,6 +405,10 @@ router.post("/verify-otp", async (req, res, next) => {
 
 router.post("/place-order", async (req, res, next) => {
   try {
+    return res.status(403).json({
+      message: "Phone verification is required before placing a public-menu order. Request and verify an OTP first."
+    });
+
     const { phone, tableId, subAdminId, cart, orderType = "Dine In", address, custCoords, paymentMethod = "COD" } = req.body;
 
     if (!phone) {
@@ -507,7 +535,11 @@ router.post("/place-order", async (req, res, next) => {
           const room = finalSubAdminId.toString();
           const count = req.io.sockets?.adapter?.rooms?.get(room)?.size || 0;
           console.log(`[Socket.io] Emitting order_created to room "${room}" (active listeners: ${count})`);
-          req.io.to(room).emit("order_created", newOrder);
+          const emitPayload = typeof newOrder.toJSON === "function" ? newOrder.toJSON() : { ...newOrder };
+        if (table) {
+          emitPayload.table = { id: table.id, name: table.name, tableType: table.tableType, code: table.code };
+        }
+        req.io.to(room).emit("order_created", emitPayload);
         }
         whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
       }
@@ -602,6 +634,14 @@ router.get("/kds/:subAdminId", async (req, res, next) => {
         status: { [Op.in]: ["pending", "preparing", "completed"] },
         createdAt: { [Op.gte]: cutoff }
       },
+      include: [
+        {
+          model: Table,
+          as: "table",
+          attributes: ["id", "name", "tableType", "code"],
+          required: false
+        }
+      ],
       order: [["createdAt", "ASC"]]
     });
 
@@ -700,59 +740,7 @@ router.get("/place-details", async (req, res, next) => {
   }
 });
 
-// GET /api/public/kds/:subAdminId - Fetch active orders for a particular subadmin KDS screen
-router.get("/kds/:subAdminId", async (req, res, next) => {
-  try {
-    const { subAdminId } = req.params;
-    const subAdmin = await SubAdmin.findOne({
-      where: { id: subAdminId },
-      attributes: ["id", "name", "themeColor", "logo"]
-    });
-    if (!subAdmin) {
-      return res.status(404).json({ message: "Restaurant not found" });
-    }
 
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours
-    const orders = await Order.findAll({
-      where: {
-        subAdminId,
-        status: { [Op.in]: ["pending", "preparing", "completed"] },
-        createdAt: { [Op.gte]: cutoff }
-      },
-      order: [["createdAt", "ASC"]]
-    });
-
-    return res.json({ subAdmin, orders });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-// POST /api/public/orders/:orderId/status - Update order status publicly (unauthenticated KDS action)
-router.post("/orders/:orderId/status", async (req, res, next) => {
-  try {
-    const { orderId } = req.params;
-    const { status } = req.body;
-    if (!["pending", "preparing", "completed", "cancelled"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
-    }
-
-    const [updatedCount] = await Order.update({ status }, { where: { id: orderId } });
-    if (updatedCount === 0) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    const order = await Order.findByPk(orderId);
-
-    if (req.io) {
-      req.io.to(order.subAdminId.toString()).emit("order_updated", order);
-    }
-
-    return res.json(order);
-  } catch (error) {
-    return next(error);
-  }
-});
 
 // POST /api/public/call-waiter - Notify subadmin that a table needs assistance
 router.post("/call-waiter", async (req, res, next) => {
@@ -855,7 +843,7 @@ router.get("/waiter/:subAdminId", async (req, res, next) => {
     const [subAdmin, tables, categories, menuItems] = await Promise.all([
       SubAdmin.findOne({
         where: { id: subAdminId },
-        attributes: ["id", "name", "themeColor", "logo", "sgstPercent", "cgstPercent", "waiterPin"]
+        attributes: ["id", "name", "themeColor", "logo", "sgstPercent", "cgstPercent", "waiterPin", "waiterName", "waiterPassword", "waiters"]
       }),
       Table.findAll({
         where: { subAdminId, status: { [Op.ne]: "inactive" } },
@@ -879,8 +867,13 @@ router.get("/waiter/:subAdminId", async (req, res, next) => {
     }
 
     const subAdminData = subAdmin.toJSON();
-    subAdminData.hasWaiterPin = !!subAdminData.waiterPin;
-    delete subAdminData.waiterPin; // Don't send the actual PIN to the public API
+    subAdminData.hasWaiterCredentials = hasWaiterCredentials(subAdminData);
+    // Keep existing PIN setups working until the restaurant creates name/password credentials.
+    subAdminData.hasWaiterPin = !subAdminData.hasWaiterCredentials && !!subAdminData.waiterPin;
+    delete subAdminData.waiterPin;
+    delete subAdminData.waiterName;
+    delete subAdminData.waiterPassword;
+    delete subAdminData.waiters;
     if (subAdminData.logo && subAdminData.logo.length > 2000) {
       subAdminData.logo = ""; // Omit massive base64 image strings to ensure fast response times
     }
@@ -888,6 +881,30 @@ router.get("/waiter/:subAdminId", async (req, res, next) => {
     const responseData = { subAdmin: subAdminData, tables, categories, menuItems };
     waiterCache.set(subAdminId, { data: responseData, expiresAt: now + 30000 });
     return res.json(responseData);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// POST /api/public/verify-waiter-login - Verify Waiter POS credentials
+router.post("/verify-waiter-login", async (req, res, next) => {
+  try {
+    const { subAdminId, name, password } = req.body;
+    if (!subAdminId || !name || !password) {
+      return res.status(400).json({ success: false, message: "Name and password are required" });
+    }
+
+    const subAdmin = await SubAdmin.findByPk(subAdminId).catch(() => null);
+    const waiter = getWaiterCredentials(subAdmin).find(
+      (credential) => credential.name.toLocaleLowerCase() === String(name).trim().toLocaleLowerCase()
+    );
+    const matchesPassword = waiter ? await bcrypt.compare(String(password), waiter.password) : false;
+
+    if (!matchesPassword) {
+      return res.status(401).json({ success: false, message: "Incorrect waiter name or password" });
+    }
+
+    return res.json({ success: true, waiterName: waiter.name });
   } catch (error) {
     return next(error);
   }
@@ -903,6 +920,9 @@ router.post("/verify-waiter-pin", async (req, res, next) => {
     const subAdmin = await SubAdmin.findByPk(subAdminId).catch(() => null);
     if (!subAdmin) {
       return res.status(400).json({ success: false, message: "Restaurant not found" });
+    }
+    if (hasWaiterCredentials(subAdmin)) {
+      return res.status(400).json({ success: false, message: "Use the waiter name and password to sign in" });
     }
     if (subAdmin.waiterPin && String(subAdmin.waiterPin) === String(pin)) {
       return res.json({ success: true });
@@ -985,7 +1005,14 @@ router.post("/waiter/order", async (req, res, next) => {
     invalidateOrdersCache(subAdminId);
 
     if (req.io) {
-      req.io.to(subAdminId.toString()).emit("order_created", newOrder);
+      const emitPayload = typeof newOrder.toJSON === "function" ? newOrder.toJSON() : { ...newOrder };
+      if (finalTableId) {
+        const t = await Table.findByPk(finalTableId);
+        if (t) {
+          emitPayload.table = { id: t.id, name: t.name, tableType: t.tableType, code: t.code };
+        }
+      }
+      req.io.to(subAdminId.toString()).emit("order_created", emitPayload);
       req.io.to(subAdminId.toString()).emit("catalog_updated");
     }
 

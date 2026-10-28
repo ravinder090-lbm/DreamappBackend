@@ -10,6 +10,9 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "build": "echo \"No build required for backend\"",
+    "migrate:waiter-credentials": "node add-waiter-credentials.js",
+    "migrate:waiters": "node add-waiters.js",
+    "migrate:table-types": "node add-table-type.js",
     "postinstall": "node patch-socketio.js"
   },
   "dependencies": {
