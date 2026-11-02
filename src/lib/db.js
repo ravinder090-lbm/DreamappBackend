@@ -71,6 +71,7 @@ export async function connectDB() {
 
     // await sequelize.sync();
     await sequelize.query('ALTER TABLE "Tables" ADD COLUMN IF NOT EXISTS "tableType" VARCHAR(255) DEFAULT \'table\';').catch(() => {});
+    await sequelize.query('ALTER TABLE "SuperAdmins" ADD COLUMN IF NOT EXISTS "enabledMenuThemes" JSONB DEFAULT \'["default", "modern", "dark", "list", "elegant", "lapinoz", "food-app", "custom"]\'::jsonb;').catch(() => {});
     console.log("Database connected & models ready.");
   } catch (error) {
     console.error("Unable to connect to the database:", error);

@@ -16,6 +16,7 @@ import { whatsappManager } from "../lib/whatsappManager.js";
 import { geocodeAddress, getHaversineDistance } from "../lib/googleMaps.js";
 import { invalidateOrdersCache } from "./orderRoutes.js";
 import { getWaiterCredentials, hasWaiterCredentials } from "../lib/waiterCredentials.js";
+import { getGlobalEnabledThemes } from "./authRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

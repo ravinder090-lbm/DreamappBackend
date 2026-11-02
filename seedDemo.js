@@ -4,13 +4,18 @@ import { Category } from "./src/models/Category.js";
 import { MenuItem } from "./src/models/MenuItem.js";
 import { Table } from "./src/models/Table.js";
 import { Order } from "./src/models/Order.js";
+import { Op } from "sequelize";
 
 async function seed() {
   try {
     await connectDB();
     
     // Check if demo user exists
-    let demoSubAdmin = await SubAdmin.findOne({ where: { email: 'demo@dreamapp.com' } });
+    let demoSubAdmin = await SubAdmin.findOne({
+      where: {
+        email: { [Op.in]: ['demo@dreamstay.com', 'demo@dreamapp.com'] }
+      }
+    });
     
     if (demoSubAdmin) {
       console.log("Demo account already exists. Clearing old data...");
@@ -22,7 +27,7 @@ async function seed() {
       console.log("Creating demo account...");
       demoSubAdmin = await SubAdmin.create({
         name: "Demo Restaurant",
-        email: "demo@dreamapp.com",
+        email: "demo@dreamstay.com",
         password: "demo_password_123",
         phone: "1234567890",
         status: "active",

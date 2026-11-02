@@ -29,14 +29,14 @@ export function buildApkFile() {
       name: "AndroidManifest.xml",
       content: Buffer.from(`<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.dreamapp.waiterpos"
+    package="com.dreamstay.waiterpos"
     android:versionCode="1"
     android:versionName="1.0.0">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application
         android:allowBackup="true"
-        android:label="Waiter POS"
+        android:label="DreamStay Waiter POS"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
         <activity

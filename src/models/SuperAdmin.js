@@ -49,6 +49,11 @@ SuperAdmin.init(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    enabledMenuThemes: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      defaultValue: ["default", "modern", "dark", "list", "elegant", "lapinoz", "food-app", "custom"],
+    },
   },
   {
     sequelize,

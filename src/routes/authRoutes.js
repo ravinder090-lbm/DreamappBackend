@@ -16,6 +16,23 @@ import { getWaiterCredentials, hasWaiterCredentials, publicWaiterCredentials, wa
 
 const otpCache = new Map();
 
+export const ALL_MENU_THEMES = ["default", "modern", "dark", "list", "elegant", "lapinoz", "food-app", "custom"];
+
+export async function getGlobalEnabledThemes() {
+  try {
+    const admin = await SuperAdmin.findOne({
+      attributes: ["enabledMenuThemes"],
+      order: [["createdAt", "ASC"]]
+    });
+    if (admin && Array.isArray(admin.enabledMenuThemes) && admin.enabledMenuThemes.length > 0) {
+      return admin.enabledMenuThemes;
+    }
+  } catch (err) {
+    console.error("Error fetching enabled menu themes:", err);
+  }
+  return ALL_MENU_THEMES;
+}
+
 function configPayload(subAdmin) {
   const waiters = publicWaiterCredentials(subAdmin);
   return {
@@ -141,7 +158,7 @@ router.post("/signup/send-otp", async (req, res, next) => {
       await transporter.sendMail({
         from: admin.smtpEmail,
         to: email,
-        subject: "DreamApp POS - Signup OTP",
+        subject: "DreamStay POS - Signup OTP",
         text: `Your OTP for signup is: ${otp}. It will expire in 10 minutes.`
       });
       res.json({ message: "OTP sent successfully" });
@@ -248,7 +265,7 @@ router.post("/demo/send-otp", async (req, res, next) => {
       await transporter.sendMail({
         from: admin.smtpEmail,
         to: email,
-        subject: "DreamApp POS - Demo Access OTP",
+        subject: "DreamStay POS - Demo Access OTP",
         text: `Your OTP to access the demo is: ${otp}. It will expire in 10 minutes.`
       });
       res.json({ message: "OTP sent successfully" });
@@ -277,7 +294,11 @@ router.post("/demo-login-otp", async (req, res, next) => {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
-    const user = await SubAdmin.findOne({ where: { email: 'demo@dreamapp.com' } });
+    const user = await SubAdmin.findOne({
+      where: {
+        email: { [Op.in]: ['demo@dreamstay.com', 'demo@dreamapp.com'] }
+      }
+    });
     if (!user) {
       return res.status(404).json({ message: "Demo account not found. Please contact support." });
     }
@@ -409,7 +430,10 @@ router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
     if (!subAdmin) {
       return res.status(404).json({ message: "Subadmin not found" });
     }
-    return res.json(configPayload(subAdmin));
+    const enabledMenuThemes = await getGlobalEnabledThemes();
+    const payload = configPayload(subAdmin);
+    payload.enabledMenuThemes = enabledMenuThemes;
+    return res.json(payload);
   } catch (error) {
     return next(error);
   }
@@ -425,7 +449,15 @@ router.put("/config", requireAuth(["subadmin"]), async (req, res, next) => {
     if (lat !== undefined) updateData.lat = Number(lat) || 0;
     if (lng !== undefined) updateData.lng = Number(lng) || 0;
     if (themeColor !== undefined) updateData.themeColor = themeColor;
-    if (publicMenuTheme !== undefined) updateData.publicMenuTheme = publicMenuTheme;
+    if (publicMenuTheme !== undefined) {
+      const enabledMenuThemes = await getGlobalEnabledThemes();
+      if (!enabledMenuThemes.includes(publicMenuTheme)) {
+        return res.status(400).json({
+          message: `The "${publicMenuTheme}" menu layout has been disabled by Super Admin.`
+        });
+      }
+      updateData.publicMenuTheme = publicMenuTheme;
+    }
     if (waiterPin !== undefined) updateData.waiterPin = waiterPin;
     if (!waiterAction) {
       if (waiterName !== undefined) updateData.waiterName = String(waiterName).trim();
@@ -633,9 +665,13 @@ router.get("/superadmin/config", requireAuth(["superadmin"]), async (req, res, n
   try {
     const admin = await SuperAdmin.findByPk(req.user.id);
     if (!admin) return res.status(404).json({ message: "Admin not found" });
+    const enabledMenuThemes = Array.isArray(admin.enabledMenuThemes) && admin.enabledMenuThemes.length > 0
+      ? admin.enabledMenuThemes
+      : ALL_MENU_THEMES;
     res.json({
       smtpEmail: admin.smtpEmail || "",
-      smtpPassword: admin.smtpPassword || ""
+      smtpPassword: admin.smtpPassword || "",
+      enabledMenuThemes
     });
   } catch (error) {
     next(error);
@@ -644,12 +680,18 @@ router.get("/superadmin/config", requireAuth(["superadmin"]), async (req, res, n
 
 router.put("/superadmin/config", requireAuth(["superadmin"]), async (req, res, next) => {
   try {
-    const { smtpEmail, smtpPassword } = req.body;
+    const { smtpEmail, smtpPassword, enabledMenuThemes } = req.body;
+    const updateData = {};
+    if (smtpEmail !== undefined) updateData.smtpEmail = smtpEmail;
+    if (smtpPassword !== undefined) updateData.smtpPassword = smtpPassword;
+    if (enabledMenuThemes !== undefined && Array.isArray(enabledMenuThemes)) {
+      updateData.enabledMenuThemes = enabledMenuThemes;
+    }
     await SuperAdmin.update(
-      { smtpEmail, smtpPassword },
+      updateData,
       { where: { id: req.user.id } }
     );
-    res.json({ message: "SMTP configuration updated" });
+    res.json({ message: "Configuration updated successfully" });
   } catch (error) {
     next(error);
   }
