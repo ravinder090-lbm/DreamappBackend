@@ -13,7 +13,7 @@ async function seed() {
     // Check if demo user exists
     let demoSubAdmin = await SubAdmin.findOne({
       where: {
-        email: { [Op.in]: ['demo@dreamstay.com', 'demo@dreamapp.com'] }
+        email: { [Op.in]: ['demo@DineStay.com', 'demo@dreamapp.com'] }
       }
     });
     
@@ -27,7 +27,7 @@ async function seed() {
       console.log("Creating demo account...");
       demoSubAdmin = await SubAdmin.create({
         name: "Demo Restaurant",
-        email: "demo@dreamstay.com",
+        email: "demo@DineStay.com",
         password: "demo_password_123",
         phone: "1234567890",
         status: "active",

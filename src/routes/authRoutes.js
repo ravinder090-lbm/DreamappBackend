@@ -158,7 +158,7 @@ router.post("/signup/send-otp", async (req, res, next) => {
       await transporter.sendMail({
         from: admin.smtpEmail,
         to: email,
-        subject: "DreamStay POS - Signup OTP",
+        subject: "DineStay POS - Signup OTP",
         text: `Your OTP for signup is: ${otp}. It will expire in 10 minutes.`
       });
       res.json({ message: "OTP sent successfully" });
@@ -265,7 +265,7 @@ router.post("/demo/send-otp", async (req, res, next) => {
       await transporter.sendMail({
         from: admin.smtpEmail,
         to: email,
-        subject: "DreamStay POS - Demo Access OTP",
+        subject: "DineStay POS - Demo Access OTP",
         text: `Your OTP to access the demo is: ${otp}. It will expire in 10 minutes.`
       });
       res.json({ message: "OTP sent successfully" });
@@ -296,7 +296,7 @@ router.post("/demo-login-otp", async (req, res, next) => {
 
     const user = await SubAdmin.findOne({
       where: {
-        email: { [Op.in]: ['demo@dreamstay.com', 'demo@dreamapp.com'] }
+        email: { [Op.in]: ['demo@DineStay.com', 'demo@dreamapp.com'] }
       }
     });
     if (!user) {
