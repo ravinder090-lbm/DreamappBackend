@@ -1,6 +1,16 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { SubAdmin } from "../models/SubAdmin.js";
+import { Order } from "../models/Order.js";
+import { Table } from "../models/Table.js";
+import { Category } from "../models/Category.js";
+import { MenuItem } from "../models/MenuItem.js";
+import { Banner } from "../models/Banner.js";
+import { Booking } from "../models/Booking.js";
+import { DeliveryAgent } from "../models/DeliveryAgent.js";
+import { User } from "../models/User.js";
+import { Task } from "../models/Task.js";
+import { sequelize } from "../lib/db.js";
 
 const router = Router();
 
@@ -57,16 +67,34 @@ router.post("/:id", async (req, res, next) => {
 });
 
 router.delete("/:id", async (req, res, next) => {
+  const transaction = await sequelize.transaction();
   try {
-    const subAdmin = await SubAdmin.findByPk(req.params.id);
+    const subAdmin = await SubAdmin.findByPk(req.params.id, { transaction });
 
     if (!subAdmin) {
+      await transaction.rollback();
       return res.status(404).json({ message: "Subadmin not found" });
     }
 
-    await SubAdmin.destroy({ where: { id: req.params.id } });
+    const subAdminId = req.params.id;
+
+    // Delete all child records to satisfy PostgreSQL foreign key integrity
+    await Order.destroy({ where: { subAdminId }, transaction });
+    await Booking.destroy({ where: { subAdminId }, transaction });
+    await MenuItem.destroy({ where: { subAdminId }, transaction });
+    await Category.destroy({ where: { subAdminId }, transaction });
+    await Table.destroy({ where: { subAdminId }, transaction });
+    await DeliveryAgent.destroy({ where: { subAdminId }, transaction });
+    await Banner.destroy({ where: { subAdminId }, transaction });
+    await User.destroy({ where: { subAdminId }, transaction });
+    await Task.destroy({ where: { subAdminId }, transaction }).catch(() => {});
+
+    await SubAdmin.destroy({ where: { id: subAdminId }, transaction });
+
+    await transaction.commit();
     return res.status(204).send();
   } catch (error) {
+    await transaction.rollback();
     return next(error);
   }
 });

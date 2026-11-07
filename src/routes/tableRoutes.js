@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import { requireAuth } from "../middleware/auth.js";
 import { Table } from "../models/Table.js";
 import { SubAdmin } from "../models/SubAdmin.js";
+import { Order } from "../models/Order.js";
 
 const router = Router();
 const tableTypes = new Set(["table", "room"]);
@@ -103,6 +104,44 @@ router.post("/:id", async (req, res, next) => {
 
     const table = await Table.findOne({ where: { id: req.params.id, subAdminId: req.user.id } });
     return res.json(table);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/:id", async (req, res, next) => {
+  try {
+    const table = await Table.findOne({
+      where: { id: req.params.id, subAdminId: req.user.id }
+    });
+
+    if (!table) {
+      return res.status(404).json({ message: "Table not found" });
+    }
+
+    // Check if table has active orders
+    const activeOrder = await Order.findOne({
+      where: {
+        tableId: req.params.id,
+        subAdminId: req.user.id,
+        status: { [Op.in]: ["pending", "preparing"] }
+      }
+    });
+
+    if (activeOrder) {
+      return res.status(400).json({
+        message: "Cannot delete this table/room while it has active pending or preparing orders."
+      });
+    }
+
+    // Nullify tableId in completed/cancelled orders to preserve historical records
+    await Order.update(
+      { tableId: null },
+      { where: { tableId: req.params.id, subAdminId: req.user.id } }
+    );
+
+    await table.destroy();
+    return res.status(204).send();
   } catch (error) {
     return next(error);
   }

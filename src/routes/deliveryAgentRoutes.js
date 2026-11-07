@@ -73,6 +73,40 @@ router.patch("/my-status", requireAuth(["delivery_agent"]), async (req, res, nex
   }
 });
 
+// Agent updates location (MUST remain before subadmin middleware)
+router.patch("/my-location", requireAuth(["delivery_agent"]), async (req, res, next) => {
+  try {
+    if (req.user.role !== "delivery_agent") {
+      return res.status(403).json({ message: "Only agents can update their location" });
+    }
+    
+    const { lat, lng } = req.body;
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ message: "Invalid coordinates" });
+    }
+
+    const agent = await DeliveryAgent.findByPk(req.user.id);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    await agent.update({ lastLat: lat, lastLng: lng });
+
+    if (req.io) {
+      req.io.to(agent.subAdminId.toString()).emit("rider_moved", {
+        agentId: agent.id,
+        lat,
+        lng,
+        name: agent.name
+      });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // -----------------------------------------------------
 // SUBADMIN ROUTES FOR MANAGING AGENTS
 // -----------------------------------------------------
@@ -144,40 +178,6 @@ router.delete("/:id", async (req, res, next) => {
     }
     await agent.destroy();
     res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Agent updates location
-router.patch("/my-location", requireAuth(["delivery_agent"]), async (req, res, next) => {
-  try {
-    if (req.user.role !== "delivery_agent") {
-      return res.status(403).json({ message: "Only agents can update their location" });
-    }
-    
-    const { lat, lng } = req.body;
-    if (typeof lat !== 'number' || typeof lng !== 'number') {
-      return res.status(400).json({ message: "Invalid coordinates" });
-    }
-
-    const agent = await DeliveryAgent.findByPk(req.user.id);
-    if (!agent) {
-      return res.status(404).json({ message: "Agent not found" });
-    }
-
-    await agent.update({ lastLat: lat, lastLng: lng });
-
-    if (req.io) {
-      req.io.to(agent.subAdminId.toString()).emit("rider_moved", {
-        agentId: agent.id,
-        lat,
-        lng,
-        name: agent.name
-      });
-    }
-
-    res.json({ success: true });
   } catch (error) {
     next(error);
   }

@@ -27,6 +27,30 @@ export function sanitizeOrderItems(items) {
   });
 }
 
+// Helper to auto-release table if no active orders remain
+async function releaseTableIfIdle(tableId, subAdminId, currentOrderId) {
+  if (!tableId) return;
+  try {
+    const remainingCount = await Order.count({
+      where: {
+        tableId,
+        subAdminId,
+        status: { [Op.in]: ["pending", "preparing"] },
+        ...(currentOrderId ? { id: { [Op.ne]: currentOrderId } } : {})
+      }
+    });
+
+    if (remainingCount === 0) {
+      await Table.update(
+        { status: "available" },
+        { where: { id: tableId, subAdminId } }
+      );
+    }
+  } catch (err) {
+    console.error("Failed to auto-release table:", err);
+  }
+}
+
 router.use(requireAuth(["subadmin"]));
 
 router.get("/", async (req, res, next) => {
@@ -126,7 +150,17 @@ router.post("/", async (req, res, next) => {
     if (!orderData.status || orderData.status === "pending") {
       orderData.status = "preparing";
     }
+
     const order = await Order.create(orderData);
+
+    // If order is Dine-In with tableId, mark table occupied
+    if (order.tableId && order.orderType === "Dine In") {
+      await Table.update(
+        { status: "occupied" },
+        { where: { id: order.tableId, subAdminId: req.user.id } }
+      ).catch(() => {});
+    }
+
     const populated = await Order.findOne({
       where: { id: order.id },
       include: [
@@ -134,31 +168,45 @@ router.post("/", async (req, res, next) => {
         { model: DeliveryAgent, as: "deliveryAgent", attributes: ["id", "name", "phone", "status", "vehicleDetails"] }
       ]
     });
+
     invalidateOrdersCache(req.user.id);
+
     if (req.io) {
       const room = req.user.id.toString();
       const count = req.io.sockets?.adapter?.rooms?.get(room)?.size || 0;
       console.log(`[Socket.io] Emitting order_created to room "${room}" (active listeners: ${count})`);
       req.io.to(room).emit("order_created", populated);
+      if (order.tableId) {
+        req.io.to(room).emit("catalog_updated");
+      }
     }
+
     if (populated.customerPhone) {
       const subAdmin = await SubAdmin.findByPk(req.user.id);
       if (subAdmin && subAdmin.whatsAppConnected) {
         whatsappManager.sendOrderInvoice(req.user.id.toString(), populated.customerPhone, populated, subAdmin.name || "Store").catch(err => console.error(err));
       }
     }
+
     res.status(201).json(populated);
   } catch (error) {
     next(error);
   }
 });
 
-router.post("/:id", async (req, res, next) => {
+const handleUpdateOrder = async (req, res, next) => {
   try {
     if (req.body.table) {
       req.body.tableId = req.body.table;
     }
-    console.log("PATCH order", req.params.id, req.body);
+    if (req.body.items) {
+      req.body.items = sanitizeOrderItems(req.body.items);
+    }
+
+    // Protect against overwriting subAdminId or primary id
+    delete req.body.subAdminId;
+    delete req.body.id;
+
     const [updatedCount] = await Order.update(req.body, {
       where: { id: req.params.id, subAdminId: req.user.id }
     });
@@ -175,9 +223,18 @@ router.post("/:id", async (req, res, next) => {
       ]
     });
 
+    // Auto-release table if completed, delivered, or cancelled
+    if (order.tableId && ["completed", "delivered", "cancelled"].includes(order.status)) {
+      await releaseTableIfIdle(order.tableId, req.user.id, order.id);
+    }
+
     invalidateOrdersCache(req.user.id);
+
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("order_updated", order);
+      if (order.tableId && ["completed", "delivered", "cancelled"].includes(order.status)) {
+        req.io.to(req.user.id.toString()).emit("catalog_updated");
+      }
       if (order.deliveryAgentId) {
         req.io.to(order.deliveryAgentId.toString()).emit("order_updated", order);
       }
@@ -188,7 +245,11 @@ router.post("/:id", async (req, res, next) => {
     console.error(error);
     return next(error);
   }
-});
+};
+
+router.post("/:id", handleUpdateOrder);
+router.patch("/:id", handleUpdateOrder);
+router.put("/:id", handleUpdateOrder);
 
 router.delete("/:id", async (req, res, next) => {
   try {
@@ -196,11 +257,23 @@ router.delete("/:id", async (req, res, next) => {
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
+
+    const tableId = order.tableId;
     await Order.destroy({ where: { id: req.params.id, subAdminId: req.user.id } });
+
+    if (tableId) {
+      await releaseTableIfIdle(tableId, req.user.id, null);
+    }
+
     invalidateOrdersCache(req.user.id);
+
     if (req.io) {
       req.io.to(req.user.id.toString()).emit("order_deleted", { orderId: req.params.id });
+      if (tableId) {
+        req.io.to(req.user.id.toString()).emit("catalog_updated");
+      }
     }
+
     return res.status(204).send();
   } catch (error) {
     return next(error);

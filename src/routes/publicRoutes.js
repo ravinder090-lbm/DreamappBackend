@@ -375,7 +375,7 @@ router.post("/verify-otp", async (req, res, next) => {
         deliveryCharges,
         total,
         paymentMethod: finalOrderType === "Home Delivery" ? paymentMethod : "COD",
-        paymentStatus: (finalOrderType === "Home Delivery" && paymentMethod === "Online") ? "paid" : "pending",
+        paymentStatus: "pending", // Requires gateway confirmation or cash on delivery; not client-assumed paid
         subAdminId: finalSubAdminId
       });
       
@@ -661,12 +661,37 @@ router.post("/orders/:orderId/status", async (req, res, next) => {
       return res.status(400).json({ message: "Invalid status" });
     }
 
-    const [updatedCount] = await Order.update({ status }, { where: { id: orderId } });
-    if (updatedCount === 0) {
+    const order = await Order.findByPk(orderId);
+    if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    const order = await Order.findByPk(orderId);
+    order.status = status;
+    await order.save();
+
+    // Auto-release table if completed or cancelled
+    if (order.tableId && ["completed", "cancelled"].includes(status)) {
+      const remainingActive = await Order.count({
+        where: {
+          tableId: order.tableId,
+          subAdminId: order.subAdminId,
+          status: { [Op.in]: ["pending", "preparing"] },
+          id: { [Op.ne]: order.id }
+        }
+      });
+      if (remainingActive === 0) {
+        await Table.update(
+          { status: "available" },
+          { where: { id: order.tableId } }
+        ).catch(() => {});
+        invalidatePublicCatalogCache(order.subAdminId);
+        if (req.io) {
+          req.io.to(order.subAdminId.toString()).emit("catalog_updated");
+        }
+      }
+    }
+
+    invalidateOrdersCache(order.subAdminId);
 
     if (req.io) {
       req.io.to(order.subAdminId.toString()).emit("order_updated", order);
@@ -677,69 +702,7 @@ router.post("/orders/:orderId/status", async (req, res, next) => {
     return next(error);
   }
 });
-router.get("/orders/:phone", async (req, res, next) => {
-  try {
-    const { phone } = req.params;
-    if (!phone) {
-      return res.status(400).json({ message: "Phone number is required" });
-    }
-    const orders = await Order.findAll({
-      where: { customerPhone: phone },
-      order: [["createdAt", "DESC"]]
-    });
-    return res.json(orders);
-  } catch (error) {
-    return next(error);
-  }
-});
 
-router.get("/autocomplete", async (req, res, next) => {
-  try {
-    const { input } = req.query;
-    if (!input) {
-      return res.json({ predictions: [] });
-    }
-    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-    if (!apiKey) {
-      console.warn("GOOGLE_PLACES_API_KEY is not configured.");
-      return res.json({ predictions: [] });
-    }
-
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
-        input
-      )}&key=${apiKey}&language=en`
-    );
-    const data = await response.json();
-    return res.json(data);
-  } catch (error) {
-    return next(error);
-  }
-});
-
-router.get("/place-details", async (req, res, next) => {
-  try {
-    const { place_id } = req.query;
-    if (!place_id) {
-      return res.status(400).json({ message: "place_id is required" });
-    }
-    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-    if (!apiKey) {
-      console.warn("GOOGLE_PLACES_API_KEY is not configured.");
-      return res.status(500).json({ message: "Google Places API is not configured on the server." });
-    }
-
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(
-        place_id
-      )}&key=${apiKey}&language=en`
-    );
-    const data = await response.json();
-    return res.json(data);
-  } catch (error) {
-    return next(error);
-  }
-});
 
 
 
@@ -802,6 +765,9 @@ router.post("/book-table", async (req, res, next) => {
       status: "pending"
     });
 
+    if (req.io) {
+      req.io.to(subAdminId.toString()).emit("booking_created", newBooking);
+    }
     res.json({ message: "Booking placed successfully", booking: newBooking });
   } catch (error) {
     console.error("Book Table Error:", error);

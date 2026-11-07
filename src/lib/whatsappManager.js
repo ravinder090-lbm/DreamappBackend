@@ -29,6 +29,7 @@ class WhatsAppManager {
   constructor() {
     this.sockets = new Map(); // subAdminId -> socket instance
     this.qrCodes = new Map(); // subAdminId -> current QR code data URL
+    this.reconnectAttempts = new Map();
     this.io = null; // socket.io server instance
   }
 
@@ -110,6 +111,7 @@ class WhatsAppManager {
       if (connection === "open") {
         console.log(`WhatsApp connected successfully for subadmin ${subAdminId}!`);
         this.qrCodes.delete(subAdminId);
+        this.reconnectAttempts.delete(subAdminId);
         
         let whatsAppNumber = sock.user.id;
         // Clean up WhatsApp ID format to just the number
@@ -144,12 +146,23 @@ class WhatsAppManager {
         this.sockets.delete(subAdminId);
 
         if (shouldReconnect) {
-          // Attempt reconnection
-          setTimeout(() => {
-            this.connectSession(subAdminId).catch((err) => {
-              console.error(`Reconnection failed for subadmin ${subAdminId}:`, err);
-            });
-          }, 3000);
+          const attempts = (this.reconnectAttempts.get(subAdminId) || 0) + 1;
+          this.reconnectAttempts.set(subAdminId, attempts);
+          if (attempts <= 5) {
+            const delay = Math.min(30000, 3000 * Math.pow(1.5, attempts - 1));
+            console.log(`Scheduling WhatsApp reconnect attempt ${attempts}/5 in ${Math.round(delay / 1000)}s for subadmin ${subAdminId}`);
+            setTimeout(() => {
+              this.connectSession(subAdminId).catch((err) => {
+                console.error(`Reconnection failed for subadmin ${subAdminId}:`, err);
+              });
+            }, delay);
+          } else {
+            console.warn(`Max reconnection attempts reached for subadmin ${subAdminId}.`);
+            this.reconnectAttempts.delete(subAdminId);
+            if (this.io) {
+              this.io.to(subAdminId).emit("whatsapp_status", { status: "disconnected", reason: "max_reconnect_exceeded" });
+            }
+          }
         } else {
           // Logged out
           console.log(`Subadmin ${subAdminId} logged out of WhatsApp Web.`);
