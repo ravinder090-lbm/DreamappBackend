@@ -12,6 +12,7 @@ import { Banner } from "../models/Banner.js";
 import { SubAdmin } from "../models/SubAdmin.js";
 import { Category } from "../models/Category.js";
 import { Booking } from "../models/Booking.js";
+import { DeliveryAgent } from "../models/DeliveryAgent.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
 import { geocodeAddress, getHaversineDistance } from "../lib/googleMaps.js";
 import { invalidateOrdersCache } from "./orderRoutes.js";
@@ -914,16 +915,18 @@ router.post("/waiter/order", async (req, res, next) => {
       return res.status(404).json({ message: "Restaurant not found" });
     }
 
-    let finalTableId = tableId || null;
-    let finalTableName = tableName || (orderType === "Dine In" ? "Dine In" : orderType || "Take Away");
+    const isDineIn = orderType === "Dine In";
+    let finalTableId = isDineIn && tableId ? tableId : null;
+    let finalTableName = isDineIn ? (tableName || "Dine In") : (orderType || "Take Away");
 
-    if (tableId) {
-      const tableObj = await Table.findByPk(tableId);
+    if (finalTableId) {
+      const tableObj = await Table.findByPk(finalTableId);
       if (tableObj) {
         finalTableName = tableObj.name;
-        if (orderType === "Dine In") {
-          await Table.update({ status: "occupied" }, { where: { id: tableId } });
-        }
+        await Table.update({ status: "occupied" }, { where: { id: finalTableId } }).catch(() => {});
+      } else {
+        finalTableId = null;
+        finalTableName = "Dine In";
       }
     }
 
@@ -984,6 +987,102 @@ router.post("/waiter/order", async (req, res, next) => {
     }
 
     return res.json({ message: "Order placed successfully!", order: newOrder });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// PUT /api/public/waiter/order/:orderId - Update an existing order via Waiter App
+router.put("/waiter/order/:orderId", async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { subAdminId, cart, tableId, tableName, orderType, customerName, customerPhone, notes } = req.body;
+
+    if (!subAdminId || !cart || !Array.isArray(cart) || cart.length === 0) {
+      return res.status(400).json({ message: "Cart items and restaurant ID are required" });
+    }
+
+    const order = await Order.findOne({ where: { id: orderId, subAdminId } });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    const subAdmin = await SubAdmin.findByPk(subAdminId);
+    if (!subAdmin) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const finalOrderType = orderType || order.orderType || "Dine In";
+    const isDineIn = finalOrderType === "Dine In";
+    let finalTableId = isDineIn ? (tableId !== undefined ? (tableId || null) : order.tableId) : null;
+    let finalTableName = isDineIn ? (tableName || order.tableName || "Dine In") : finalOrderType;
+
+    if (!isDineIn && order.tableId) {
+      await Table.update({ status: "available" }, { where: { id: order.tableId } }).catch(() => {});
+    } else if (isDineIn && finalTableId) {
+      const tableObj = await Table.findByPk(finalTableId);
+      if (tableObj) {
+        finalTableName = tableObj.name;
+        await Table.update({ status: "occupied" }, { where: { id: finalTableId } }).catch(() => {});
+      } else {
+        finalTableId = null;
+        finalTableName = "Dine In";
+      }
+    }
+
+    const subtotal = cart.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+    const sgstAmount = (subtotal * (subAdmin.sgstPercent || 0)) / 100;
+    const cgstAmount = (subtotal * (subAdmin.cgstPercent || 0)) / 100;
+    const total = subtotal + sgstAmount + cgstAmount;
+
+    const formattedItems = cart.map(i => ({
+      _id: i._id || i.id,
+      name: i.name,
+      quantity: Number(i.quantity),
+      price: Number(i.price),
+      instructions: i.instructions || ""
+    }));
+
+    await Order.update({
+      items: formattedItems,
+      subtotal,
+      sgstAmount,
+      cgstAmount,
+      total,
+      tableId: finalTableId,
+      tableName: finalTableName,
+      orderType: finalOrderType,
+      ...(customerName !== undefined ? { customerName: customerName.trim() || order.customerName } : {}),
+      ...(customerPhone !== undefined ? { customerPhone: customerPhone.trim() } : {}),
+      ...(notes !== undefined ? { notes } : {})
+    }, { where: { id: orderId, subAdminId } });
+
+    const updatedOrder = await Order.findOne({
+      where: { id: orderId, subAdminId },
+      include: [
+        { model: Table, as: "table", attributes: ["name", "code", "tableType"] },
+        { model: DeliveryAgent, as: "deliveryAgent", attributes: ["id", "name", "phone", "status", "vehicleDetails"] }
+      ]
+    });
+
+    invalidateWaiterCache(subAdminId);
+    invalidateOrdersCache(subAdminId);
+
+    if (req.io) {
+      const emitPayload = typeof updatedOrder.toJSON === "function" ? updatedOrder.toJSON() : { ...updatedOrder };
+      if (finalTableId && !emitPayload.table) {
+        const t = await Table.findByPk(finalTableId);
+        if (t) {
+          emitPayload.table = { id: t.id, name: t.name, tableType: t.tableType, code: t.code };
+        }
+      } else if (!finalTableId) {
+        emitPayload.table = null;
+      }
+      req.io.to(subAdminId.toString()).emit("order_updated", emitPayload);
+      req.io.to(subAdminId.toString()).emit("catalog_updated");
+    }
+
+    return res.json({ message: "Order updated successfully!", order: updatedOrder });
   } catch (error) {
     return next(error);
   }
