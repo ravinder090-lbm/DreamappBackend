@@ -433,6 +433,9 @@ router.get("/config", requireAuth(["subadmin"]), async (req, res, next) => {
     const enabledMenuThemes = await getGlobalEnabledThemes();
     const payload = configPayload(subAdmin);
     payload.enabledMenuThemes = enabledMenuThemes;
+    if (!enabledMenuThemes.includes(payload.publicMenuTheme)) {
+      payload.publicMenuTheme = enabledMenuThemes[0] || "food-app";
+    }
     return res.json(payload);
   } catch (error) {
     return next(error);

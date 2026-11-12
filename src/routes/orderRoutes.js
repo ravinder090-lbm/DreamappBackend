@@ -6,6 +6,7 @@ import { Table } from "../models/Table.js";
 import { DeliveryAgent } from "../models/DeliveryAgent.js";
 import { SubAdmin } from "../models/SubAdmin.js";
 import { whatsappManager } from "../lib/whatsappManager.js";
+import { getClientUrl } from "./publicRoutes.js";
 
 const router = Router();
 
@@ -184,7 +185,9 @@ router.post("/", async (req, res, next) => {
     if (populated.customerPhone) {
       const subAdmin = await SubAdmin.findByPk(req.user.id);
       if (subAdmin && subAdmin.whatsAppConnected) {
-        whatsappManager.sendOrderInvoice(req.user.id.toString(), populated.customerPhone, populated, subAdmin.name || "Store").catch(err => console.error(err));
+        const clientUrl = getClientUrl(req);
+        const receiptUrl = `${clientUrl}/receipt/${populated.orderNumber || populated.id}`;
+        whatsappManager.sendOrderInvoice(req.user.id.toString(), populated.customerPhone, populated, subAdmin.name || "Store", receiptUrl).catch(err => console.error(err));
       }
     }
 

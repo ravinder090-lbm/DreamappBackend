@@ -274,7 +274,7 @@ class WhatsAppManager {
     console.log(`WhatsApp custom message sent to ${cleaned} via subadmin ${subAdminId}`);
   }
 
-  async sendOrderInvoice(subAdminId, phone, order, storeName) {
+  async sendOrderInvoice(subAdminId, phone, order, storeName, receiptUrl) {
     const sock = this.sockets.get(subAdminId.toString());
     if (!sock || !phone) return;
 
@@ -283,32 +283,45 @@ class WhatsAppManager {
     if (cleaned.length < 10) return; // Invalid phone
     const jid = `${cleaned}@s.whatsapp.net`;
 
-    let itemsText = (order.items || []).map(item => `${item.quantity}x ${item.name} - ₹${item.price * item.quantity}`).join("\n");
+    const items = order.items || [];
+    let itemsText = items.map(item => `  • ${item.quantity}x ${item.name} - ₹${(Number(item.price) * Number(item.quantity)).toFixed(2)}`).join("\n");
     
-    const message = `🧾 *Order Confirmation*
-Store: ${storeName}
-Order #: ${order.orderNumber}
-Type: ${order.orderType || "Dine In"}
-Status: *${(order.status || "preparing").toUpperCase()}*
+    const formattedDate = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
 
-*Items:*
-${itemsText}
+    let message = `🍽️ *${storeName}*
+━━━━━━━━━━━━━━━━━━━━
+🧾 *DIGITAL ORDER RECEIPT*
+━━━━━━━━━━━━━━━━━━━━
+*Order #:* ${order.orderNumber}
+*Date:* ${formattedDate}
+*Order Type:* ${order.orderType || "Dine In"}${order.tableName ? ` (${order.tableName})` : ''}
+*Status:* *${(order.status || "preparing").toUpperCase()}*
 
-Subtotal: ₹${order.subtotal}
-SGST: ₹${order.sgstAmount}
-CGST: ₹${order.cgstAmount}
-${order.deliveryCharges > 0 ? `Delivery: ₹${order.deliveryCharges}\n` : ''}*Total: ₹${order.total}*
+*Order Items:*
+${itemsText || "  (No items listed)"}
 
-Thank you for your order!`;
+━━━━━━━━━━━━━━━━━━━━
+Subtotal: ₹${Number(order.subtotal || 0).toFixed(2)}
+${order.sgstAmount ? `SGST: ₹${Number(order.sgstAmount).toFixed(2)}\n` : ''}${order.cgstAmount ? `CGST: ₹${Number(order.cgstAmount).toFixed(2)}\n` : ''}${order.deliveryCharges > 0 ? `Delivery Charges: ₹${Number(order.deliveryCharges).toFixed(2)}\n` : ''}*Total Amount: ₹${Number(order.total || 0).toFixed(2)}*
+━━━━━━━━━━━━━━━━━━━━`;
+
+    if (receiptUrl) {
+      message += `\n\n📲 *View & Download Digital Receipt:*
+${receiptUrl}
+
+Tap the link above to view your full digital bill, download PDF receipt, and track live order progress!`;
+    }
+
+    message += `\n\n🙏 *Thank you for dining with us!*`;
 
     try {
       await Promise.race([
         sock.sendMessage(jid, { text: message }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("WhatsApp send timeout")), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error("WhatsApp send timeout")), 8000))
       ]);
-      console.log(`WhatsApp invoice sent to ${cleaned} via subadmin ${subAdminId}`);
+      console.log(`WhatsApp digital receipt sent to ${cleaned} via subadmin ${subAdminId}`);
     } catch (err) {
-      console.error(`Failed to send WhatsApp invoice to ${cleaned}:`, err.message);
+      console.error(`Failed to send WhatsApp digital receipt to ${cleaned}:`, err.message);
     }
   }
 

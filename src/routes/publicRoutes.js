@@ -22,6 +22,23 @@ import { getGlobalEnabledThemes } from "./authRoutes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export const getClientUrl = (req) => {
+  if (process.env.CLIENT_URL) return process.env.CLIENT_URL.replace(/\/$/, "");
+  const origin = req.get("origin") || req.get("referer");
+  if (origin) {
+    try {
+      const u = new URL(origin);
+      return `${u.protocol}//${u.host}`;
+    } catch (_) {}
+  }
+  const host = req.get("host") || "localhost:5173";
+  if (host.includes(":5000")) {
+    return `http://${host.replace(":5000", ":5173")}`;
+  }
+  const proto = req.secure || req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+  return `${proto}://${host}`;
+};
+
 const router = Router();
 
 router.get("/restaurants", async (req, res, next) => {
@@ -131,6 +148,11 @@ router.get("/menu/:tableId", async (req, res, next) => {
       res.setHeader("X-Cache", "MISS");
     }
 
+    const enabledThemes = await getGlobalEnabledThemes();
+    if (table.subAdmin && !enabledThemes.includes(table.subAdmin.publicMenuTheme)) {
+      table.subAdmin.publicMenuTheme = enabledThemes[0] || "food-app";
+    }
+
     return res.json({ table, occupierPhone, ...catalogData });
   } catch (error) {
     return next(error);
@@ -177,6 +199,11 @@ router.get("/menu-by-slug/:slug", async (req, res, next) => {
       catalogData = { menuItems, banners, categories };
       publicCatalogCache.set(subAdminIdStr, { timestamp: Date.now(), data: catalogData });
       res.setHeader("X-Cache", "MISS");
+    }
+
+    const enabledThemes = await getGlobalEnabledThemes();
+    if (!enabledThemes.includes(subAdmin.publicMenuTheme)) {
+      subAdmin.publicMenuTheme = enabledThemes[0] || "food-app";
     }
 
     return res.json({ 
@@ -396,7 +423,9 @@ router.post("/verify-otp", async (req, res, next) => {
         }
         req.io.to(room).emit("order_created", emitPayload);
       }
-      whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
+      const clientUrl = getClientUrl(req);
+      const receiptUrl = `${clientUrl}/receipt/${newOrder.orderNumber || newOrder.id}`;
+      whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store", receiptUrl).catch(err => console.error(err));
     }
 
     return res.json({ message: "OTP verified successfully", user, order: newOrder });
@@ -543,7 +572,9 @@ router.post("/place-order", async (req, res, next) => {
         }
         req.io.to(room).emit("order_created", emitPayload);
         }
-        whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store").catch(err => console.error(err));
+        const clientUrl = getClientUrl(req);
+      const receiptUrl = `${clientUrl}/receipt/${newOrder.orderNumber || newOrder.id}`;
+      whatsappManager.sendOrderInvoice(finalSubAdminId.toString(), user.phone, newOrder, subAdmin.name || "Store", receiptUrl).catch(err => console.error(err));
       }
     }
 
@@ -564,6 +595,70 @@ router.get("/orders/:phone", async (req, res, next) => {
       order: [["createdAt", "DESC"]]
     });
     return res.json(orders);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// GET /api/public/receipt/:orderId - Fetch full digital receipt for customer
+router.get("/receipt/:orderId", async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    if (!orderId) {
+      return res.status(400).json({ message: "Order ID is required" });
+    }
+
+    const cleanId = String(orderId).trim();
+    const rawNumber = cleanId.replace(/^(ORD-|#ORD-|#)/i, "");
+    let order = null;
+
+    // 1. If valid UUID, look up by primary key
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+    if (isUUID) {
+      order = await Order.findByPk(cleanId);
+    }
+
+    // 2. Look up by orderNumber (with or without ORD- prefix, case-insensitive)
+    if (!order) {
+      order = await Order.findOne({
+        where: {
+          [Op.or]: [
+            { orderNumber: cleanId },
+            { orderNumber: cleanId.toUpperCase() },
+            { orderNumber: `ORD-${rawNumber}` },
+            { orderNumber: rawNumber }
+          ]
+        }
+      });
+    }
+
+    // 3. Fallback: try findByPk directly if not already tried
+    if (!order && !isUUID) {
+      try {
+        order = await Order.findByPk(cleanId);
+      } catch (_) {}
+    }
+
+    if (!order) {
+      return res.status(404).json({ message: "Digital receipt not found for this order" });
+    }
+
+    const subAdmin = await SubAdmin.findByPk(order.subAdminId, {
+      attributes: ["id", "name", "address", "phone", "logo", "themeColor", "sgstPercent", "cgstPercent"]
+    });
+
+    let table = null;
+    if (order.tableId) {
+      table = await Table.findByPk(order.tableId, {
+        attributes: ["id", "name", "tableType", "code"]
+      });
+    }
+
+    const payload = typeof order.toJSON === "function" ? order.toJSON() : { ...order };
+    payload.restaurant = subAdmin ? (typeof subAdmin.toJSON === "function" ? subAdmin.toJSON() : subAdmin) : null;
+    payload.table = table ? (typeof table.toJSON === "function" ? table.toJSON() : table) : null;
+
+    return res.json(payload);
   } catch (error) {
     return next(error);
   }
@@ -986,6 +1081,18 @@ router.post("/waiter/order", async (req, res, next) => {
       req.io.to(subAdminId.toString()).emit("catalog_updated");
     }
 
+    if (customerPhone && subAdmin && subAdmin.whatsAppConnected) {
+      const clientUrl = getClientUrl(req);
+      const receiptUrl = `${clientUrl}/receipt/${newOrder.orderNumber || newOrder.id}`;
+      whatsappManager.sendOrderInvoice(
+        subAdminId.toString(),
+        customerPhone,
+        newOrder,
+        subAdmin.name || "Store",
+        receiptUrl
+      ).catch(err => console.error("Waiter order WhatsApp digital receipt error:", err));
+    }
+
     return res.json({ message: "Order placed successfully!", order: newOrder });
   } catch (error) {
     return next(error);
@@ -1080,6 +1187,22 @@ router.put("/waiter/order/:orderId", async (req, res, next) => {
       }
       req.io.to(subAdminId.toString()).emit("order_updated", emitPayload);
       req.io.to(subAdminId.toString()).emit("catalog_updated");
+    }
+
+    const targetPhone = updatedOrder.customerPhone || order.customerPhone;
+    if (targetPhone) {
+      const sa = await SubAdmin.findByPk(subAdminId);
+      if (sa && sa.whatsAppConnected) {
+        const clientUrl = getClientUrl(req);
+        const receiptUrl = `${clientUrl}/receipt/${updatedOrder.orderNumber || updatedOrder.id}`;
+        whatsappManager.sendOrderInvoice(
+          subAdminId.toString(),
+          targetPhone,
+          updatedOrder,
+          sa.name || "Store",
+          receiptUrl
+        ).catch(err => console.error("Waiter order update WhatsApp error:", err));
+      }
     }
 
     return res.json({ message: "Order updated successfully!", order: updatedOrder });
