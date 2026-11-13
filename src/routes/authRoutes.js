@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import net from "net";
 import { Router } from "express";
 import { SubAdmin } from "../models/SubAdmin.js";
 import { SuperAdmin } from "../models/SuperAdmin.js";
@@ -707,6 +708,59 @@ router.get("/superadmin/leads", requireAuth(["superadmin"]), async (req, res, ne
   } catch (error) {
     next(error);
   }
+});
+
+router.post("/test-printer-network", requireAuth(["subadmin", "superadmin"]), (req, res) => {
+  const { host, port = 9100 } = req.body;
+  if (!host) {
+    return res.status(400).json({ message: "Printer IP address or hostname is required" });
+  }
+
+  const socket = new net.Socket();
+  socket.setTimeout(6000);
+
+  socket.connect(Number(port) || 9100, host, () => {
+    socket.destroy();
+    return res.json({ success: true, message: `Connected to thermal printer at ${host}:${port}` });
+  });
+
+  socket.on("error", (err) => {
+    socket.destroy();
+    return res.status(500).json({ message: `Could not connect to printer at ${host}:${port}: ${err.message}` });
+  });
+
+  socket.on("timeout", () => {
+    socket.destroy();
+    return res.status(504).json({ message: `Connection timed out connecting to printer at ${host}:${port}` });
+  });
+});
+
+router.post("/print-network", requireAuth(["subadmin", "superadmin"]), (req, res) => {
+  const { host, port = 9100, payloadBase64 } = req.body;
+  if (!host || !payloadBase64) {
+    return res.status(400).json({ message: "Host and print payload are required" });
+  }
+
+  const buffer = Buffer.from(payloadBase64, "base64");
+  const socket = new net.Socket();
+  socket.setTimeout(5000);
+
+  socket.connect(Number(port) || 9100, host, () => {
+    socket.write(buffer, () => {
+      socket.end();
+      return res.json({ success: true, message: "Print job sent to network printer" });
+    });
+  });
+
+  socket.on("error", (err) => {
+    socket.destroy();
+    return res.status(500).json({ message: `Network printer error: ${err.message}` });
+  });
+
+  socket.on("timeout", () => {
+    socket.destroy();
+    return res.status(504).json({ message: "Network printer connection timed out" });
+  });
 });
 
 export default router;
